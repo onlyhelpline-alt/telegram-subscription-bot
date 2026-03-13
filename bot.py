@@ -204,6 +204,13 @@ app.add_handler(CallbackQueryHandler(userlist,pattern="userlist"))
 app.add_handler(CallbackQueryHandler(pendingpayments,pattern="pendingpayments"))
 app.add_handler(CallbackQueryHandler(paymenthistory,pattern="paymenthistory"))
 app.add_handler(CallbackQueryHandler(expirydashboard,pattern="expirydashboard"))
+app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
+app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
+app.add_handler(CallbackQueryHandler(pay,pattern="pay_"))
+app.add_handler(CallbackQueryHandler(payment,pattern="payment"))
+app.add_handler(CallbackQueryHandler(mysub,pattern="mysub"))
+app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
+app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
 print("BOT RUNNING")
 
