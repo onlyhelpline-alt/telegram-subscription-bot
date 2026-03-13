@@ -1,9 +1,6 @@
-import os
 import sqlite3
-import random
-import string
+import os
 from datetime import datetime, timedelta
-
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -13,83 +10,66 @@ GROUP_ID = int(os.getenv("GROUP_ID"))
 
 ADMIN_USERNAME = "@ckg2754"
 
-conn = sqlite3.connect("users.db", check_same_thread=False)
+conn = sqlite3.connect("users.db")
 cur = conn.cursor()
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS users (
-user_id INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS users(
+user_id INTEGER,
 expiry TEXT
 )
 """)
+
 conn.commit()
 
 
-def generate_code():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    code = generate_code()
-
     text = f"""
-🔥 VIP Subscription
+🔥 VIP Subscription Bot
 
-1️⃣ Payment करो
+Subscription lene ke liye payment karein.
 
-2️⃣ Screenshot लो
-
-3️⃣ Payment proof और code भेजो
+Payment ke baad proof bheje:
 
 👉 {ADMIN_USERNAME}
 
-📌 Code: {code}
+Admin approve karega aur access mil jayega.
 """
-
     await update.message.reply_text(text)
 
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_user.id != ADMIN_ID:
         return
 
     try:
-
         user_id = int(context.args[0])
         days = int(context.args[1])
 
         expiry = datetime.now() + timedelta(days=days)
 
-        cur.execute(
-            "INSERT OR REPLACE INTO users VALUES (?,?)",
-            (user_id, expiry.strftime("%Y-%m-%d"))
-        )
-
+        cur.execute("INSERT INTO users VALUES (?,?)",
+                    (user_id, expiry.strftime("%Y-%m-%d")))
         conn.commit()
 
         await context.bot.unban_chat_member(GROUP_ID, user_id)
 
         await context.bot.send_message(
             user_id,
-            f"✅ Subscription Activated\nExpiry: {expiry.date()}"
+            f"✅ Subscription Active\n\nExpiry: {expiry.strftime('%Y-%m-%d')}"
         )
 
         await update.message.reply_text("User Added")
 
     except:
-
         await update.message.reply_text("/add USER_ID DAYS")
 
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_user.id != ADMIN_ID:
         return
 
     try:
-
         user_id = int(context.args[0])
 
         cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
@@ -100,29 +80,58 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("User Removed")
 
     except:
-
         await update.message.reply_text("/remove USER_ID")
 
 
 async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_user.id != ADMIN_ID:
         return
 
     cur.execute("SELECT * FROM users")
-
     data = cur.fetchall()
 
-    text = "Active Users:\n\n"
+    text = "Active Users\n\n"
 
     for u in data:
-
         text += f"{u[0]} | {u[1]}\n"
 
     await update.message.reply_text(text)
 
 
-async def main():
+async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now()
+
+    cur.execute("SELECT * FROM users")
+    users = cur.fetchall()
+
+    for user in users:
+
+        user_id = user[0]
+        expiry = datetime.strptime(user[1], "%Y-%m-%d")
+
+        if expiry < now:
+
+            await context.bot.ban_chat_member(GROUP_ID, user_id)
+
+            cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+            conn.commit()
+
+        elif expiry - now <= timedelta(days=1):
+
+            await context.bot.send_message(
+                user_id,
+                f"""
+⚠ Subscription Expiring Soon
+
+Renew now to continue access.
+
+Contact:
+{ADMIN_USERNAME}
+"""
+            )
+
+
+def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -131,11 +140,13 @@ async def main():
     app.add_handler(CommandHandler("remove", remove))
     app.add_handler(CommandHandler("users", users))
 
+    job = app.job_queue
+    job.run_repeating(check_expiry, interval=3600)
+
     print("Bot Started")
 
-    await app.run_polling()
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
