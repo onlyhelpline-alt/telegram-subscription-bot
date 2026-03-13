@@ -1,7 +1,6 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
 ApplicationBuilder,
@@ -35,6 +34,7 @@ file_id TEXT
 
 conn.commit()
 
+
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -48,7 +48,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# BUY
+
+# BUY BUTTON
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -63,11 +64,11 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# SCREENSHOT VERIFY
+
+# SCREENSHOT RECEIVE
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
-
     file_id = update.message.photo[-1].file_id
 
     cur.execute("INSERT INTO payments VALUES (?,?)",(user_id,file_id))
@@ -86,7 +87,8 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Screenshot received. Waiting for admin approval.")
 
-# APPROVE
+
+# APPROVE USER
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -97,22 +99,26 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expiry = datetime.now() + timedelta(days=30)
 
     cur.execute(
-    "INSERT OR REPLACE INTO users VALUES (?,?)",
-    (user_id, expiry.strftime("%Y-%m-%d"))
+        "INSERT OR REPLACE INTO users VALUES (?,?)",
+        (user_id, expiry.strftime("%Y-%m-%d"))
     )
 
     conn.commit()
 
-    invite = await context.bot.create_chat_invite_link(GROUP_ID,member_limit=1)
+    invite = await context.bot.create_chat_invite_link(
+        GROUP_ID,
+        member_limit=1
+    )
 
     await context.bot.send_message(
-    user_id,
-    f"✅ Subscription Approved\n\nJoin:\n{invite.invite_link}"
+        user_id,
+        f"✅ Subscription Approved\n\nJoin Channel:\n{invite.invite_link}"
     )
 
     await query.edit_message_caption("User Approved")
 
-# STATUS
+
+# USER STATUS
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -127,6 +133,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"Your expiry: {data[0]}")
     else:
         await query.message.reply_text("No active subscription")
+
 
 # ADMIN PANEL
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,6 +151,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
 # USERS LIST
 async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -159,6 +167,7 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text+=f"{u[0]} | {u[1]}\n"
 
     await query.message.reply_text(text)
+
 
 # BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,6 +187,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     await update.message.reply_text("Broadcast sent")
+
 
 # AUTO EXPIRY
 async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
@@ -203,11 +213,12 @@ async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
 
             try:
                 await context.bot.send_message(
-                user_id,
-                "⚠️ Subscription expiring soon\nRenew now."
+                    user_id,
+                    "⚠️ Subscription expiring soon\nRenew now."
                 )
             except:
                 pass
+
 
 # MAIN
 async def main():
@@ -217,6 +228,26 @@ async def main():
     app.add_handler(CommandHandler("start",start))
     app.add_handler(CommandHandler("admin",admin))
     app.add_handler(CommandHandler("broadcast",broadcast))
+
+    app.add_handler(CallbackQueryHandler(buy,pattern="buy"))
+    app.add_handler(CallbackQueryHandler(status,pattern="status"))
+    app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
+    app.add_handler(CallbackQueryHandler(users,pattern="users"))
+
+    app.add_handler(MessageHandler(filters.PHOTO,screenshot))
+
+    job=app.job_queue
+    job.run_repeating(check_expiry,interval=3600)
+
+    print("Bot Running...")
+
+    await app.run_polling()
+
+
+import asyncio
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_until_complete(main())    app.add_handler(CommandHandler("broadcast",broadcast))
 
     app.add_handler(CallbackQueryHandler(buy,pattern="buy"))
     app.add_handler(CallbackQueryHandler(status,pattern="status"))
