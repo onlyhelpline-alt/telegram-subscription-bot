@@ -33,7 +33,6 @@ cur.execute("CREATE TABLE IF NOT EXISTS users(user_id INTEGER, plan TEXT, expiry
 cur.execute("CREATE TABLE IF NOT EXISTS payments(user_id INTEGER, plan TEXT, time TEXT)")
 conn.commit()
 
-
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -48,6 +47,102 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔥 Welcome to VIP Subscription Bot 🚀",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+
+# ADMIN PANEL
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("👥 Total Users", callback_data="totalusers")],
+        [InlineKeyboardButton("📋 User List", callback_data="userlist")],
+        [InlineKeyboardButton("⏳ Pending Payments", callback_data="pendingpayments")],
+        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expirydashboard")],
+        [InlineKeyboardButton("💰 Payment History", callback_data="paymenthistory")]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ Admin Panel",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ADMIN PANEL FUNCTIONS
+async def totalusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT COUNT(*) FROM users")
+    count = cur.fetchone()[0]
+
+    await q.message.reply_text(f"👥 Total Users: {count}")
+
+
+async def userlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    text = "📋 User List\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def pendingpayments(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM payments")
+    rows = cur.fetchall()
+
+    text = "⏳ Pending Payments\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def expirydashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    text = "📊 Expiry Dashboard\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def paymenthistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM payments")
+    rows = cur.fetchall()
+
+    text = "💰 Payment History\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
 
 
 # PAYMENT
@@ -214,11 +309,6 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📅 Expiry: {expiry.strftime("%Y-%m-%d")}"""
     )
 
-    await context.bot.send_message(
-        ADMIN_ID,
-        f"✅ User {uid} activated"
-    )
-
 
 # REJECT
 async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -233,100 +323,26 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(uid, "❌ Payment rejected")
 
 
-# ADMIN PANEL
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# MY SUB
+async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if update.effective_user.id != ADMIN_ID:
+    q = update.callback_query
+    await q.answer()
+
+    user = q.from_user.id
+
+    cur.execute("SELECT * FROM users WHERE user_id=?", (user,))
+    r = cur.fetchone()
+
+    if not r:
+        await q.message.reply_text("❌ No active subscription")
         return
 
-    keyboard = [
-        [InlineKeyboardButton("👥 Total Users", callback_data="totalusers")],
-        [InlineKeyboardButton("📋 User List", callback_data="userlist")],
-        [InlineKeyboardButton("⏳ Pending Payments", callback_data="pendingpayments")],
-        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expirydashboard")],
-        [InlineKeyboardButton("💰 Payment History", callback_data="paymenthistory")]
-    ]
+    await q.message.reply_text(
+        f"""📦 Plan: {r[1]}
 
-    await update.message.reply_text(
-        "⚙️ Admin Panel",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+📅 Expiry: {r[2]}"""
     )
-
-
-# ADMIN PANEL FUNCTIONS
-async def totalusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    cur.execute("SELECT COUNT(*) FROM users")
-    count = cur.fetchone()[0]
-
-    await q.message.reply_text(f"👥 Total Users: {count}")
-
-
-async def userlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    cur.execute("SELECT * FROM users")
-    rows = cur.fetchall()
-
-    text = "📋 User List\n\n"
-
-    for r in rows:
-        text += f"{r[0]} | {r[1]} | {r[2]}\n"
-
-    await q.message.reply_text(text)
-
-
-async def pendingpayments(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    cur.execute("SELECT * FROM payments")
-    rows = cur.fetchall()
-
-    text = "⏳ Pending Payments\n\n"
-
-    for r in rows:
-        text += f"{r[0]} | {r[1]} | {r[2]}\n"
-
-    await q.message.reply_text(text)
-
-
-async def expirydashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    cur.execute("SELECT * FROM users")
-    rows = cur.fetchall()
-
-    text = "📊 Expiry Dashboard\n\n"
-
-    for r in rows:
-        text += f"{r[0]} | {r[1]} | {r[2]}\n"
-
-    await q.message.reply_text(text)
-
-
-async def paymenthistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    cur.execute("SELECT * FROM payments")
-    rows = cur.fetchall()
-
-    text = "💰 Payment History\n\n"
-
-    for r in rows:
-        text += f"{r[0]} | {r[1]} | {r[2]}\n"
-
-    await q.message.reply_text(text)
 
 
 # ADMIN COMMANDS
@@ -443,6 +459,7 @@ async def expiry_checker(app):
 
 
 # APP
+
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
@@ -472,7 +489,6 @@ app.add_handler(MessageHandler(filters.PHOTO, screenshot))
 
 
 async def post_init(app):
-
     asyncio.create_task(expiry_checker(app))
 
 
