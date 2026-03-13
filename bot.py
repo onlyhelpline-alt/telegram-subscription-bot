@@ -2,12 +2,7 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -33,6 +28,7 @@ expiry TEXT
 """)
 conn.commit()
 
+
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -42,11 +38,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "🔥 VIP Premium Bot\n\nExclusive course access.\n\nChoose option below:",
+        "🔥 VIP Premium Bot\n\nChoose option:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# BUY BUTTON
+
+# BUY
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -57,31 +54,31 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await query.message.reply_text(
-        "💳 Complete payment.\n\nAfter payment upload screenshot.",
+        "Payment karo aur screenshot bhejo.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# RECEIVE SCREENSHOT
+
+# SCREENSHOT
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     photo = update.message.photo[-1].file_id
 
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user_id}")
-        ]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user_id}")
+    ]]
 
     await context.bot.send_photo(
         ADMIN_ID,
         photo,
-        caption=f"Payment proof from user\nID: {user_id}",
+        caption=f"Payment proof\nUser ID: {user_id}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    await update.message.reply_text("✅ Screenshot received.\nAdmin verification pending.")
+    await update.message.reply_text("Screenshot received. Admin verify karega.")
+
 
 # APPROVE
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,7 +94,6 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "INSERT OR REPLACE INTO users VALUES (?,?)",
         (user_id, expiry.strftime("%Y-%m-%d"))
     )
-
     conn.commit()
 
     invite = await context.bot.create_chat_invite_link(
@@ -107,10 +103,27 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         user_id,
-        f"✅ Payment Verified\n\nJoin Channel:\n{invite.invite_link}"
+        f"✅ Approved\nJoin Channel:\n{invite.invite_link}"
     )
 
     await query.edit_message_caption("User Approved")
+
+
+# REJECT
+async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    user_id = int(query.data.split("_")[1])
+
+    await context.bot.send_message(
+        user_id,
+        "❌ Payment rejected. Contact admin."
+    )
+
+    await query.edit_message_caption("Payment Rejected")
+
 
 # STATUS
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -124,27 +137,28 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = cur.fetchone()
 
     if data:
-        await query.message.reply_text(f"📅 Expiry Date: {data[0]}")
+        await query.message.reply_text(f"Expiry: {data[0]}")
     else:
-        await query.message.reply_text("❌ No active subscription")
+        await query.message.reply_text("No active subscription")
 
-# ADMIN DASHBOARD
+
+# ADMIN PANEL
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
         return
 
     keyboard = [
-        [InlineKeyboardButton("📊 Users List", callback_data="users")],
-        [InlineKeyboardButton("📢 Broadcast", callback_data="broadcast")]
+        [InlineKeyboardButton("📊 Users", callback_data="users")],
     ]
 
     await update.message.reply_text(
-        "⚙️ Admin Dashboard",
+        "Admin Dashboard",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# USERS
+
+# USERS LIST
 async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -153,12 +167,13 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT * FROM users")
     data = cur.fetchall()
 
-    text = "👥 Active Subscribers\n\n"
+    text = "Active Users\n\n"
 
     for u in data:
         text += f"{u[0]} | {u[1]}\n"
 
     await query.message.reply_text(text)
+
 
 # BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,7 +192,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("✅ Broadcast Sent")
+    await update.message.reply_text("Broadcast sent")
+
 
 # AUTO EXPIRY
 async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
@@ -204,10 +220,11 @@ async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     user_id,
-                    "⚠️ Subscription expiring tomorrow\nRenew now."
+                    "⚠️ Subscription expiring soon"
                 )
             except:
                 pass
+
 
 # MAIN
 async def main():
@@ -221,6 +238,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(buy, pattern="buy"))
     app.add_handler(CallbackQueryHandler(status, pattern="status"))
     app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
+    app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
     app.add_handler(CallbackQueryHandler(users, pattern="users"))
 
     app.add_handler(MessageHandler(filters.PHOTO, screenshot))
@@ -232,10 +250,8 @@ async def main():
 
     await app.run_polling()
 
+
 # RUN
 if __name__ == "__main__":
-
     import asyncio
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
