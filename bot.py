@@ -12,6 +12,8 @@ ADMIN_ID=7066306669
 UPI="bestcourseller@ybl"
 ADMIN_CONTACT="https://t.me/ckg2754"
 
+QR_FILE="qr.png"   # QR image file name
+
 PLANS={
 "nitish":{"name":"Nitish FX Sniper VIP","price":"399","channel":-1003627923608},
 "stock":{"name":"Stock Learner Premium","price":"499","channel":-1003719507955},
@@ -45,7 +47,19 @@ async def payment(update:Update,context:ContextTypes.DEFAULT_TYPE):
     q=update.callback_query
     await q.answer()
 
-    await q.message.reply_text(
+    if os.path.exists(QR_FILE):
+        await q.message.reply_photo(
+            photo=open(QR_FILE,"rb"),
+            caption=f"""💳 Payment Info
+
+UPI ID: {UPI}
+
+📤 After payment send screenshot
+
+🆔 Your ID: {q.from_user.id}"""
+        )
+    else:
+        await q.message.reply_text(
 f"""💳 Payment Info
 
 UPI ID: {UPI}
@@ -103,10 +117,24 @@ async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
     context.user_data["plan"]=key
 
     keyboard=[
-    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")]
+        [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
+        [InlineKeyboardButton("👤 Send ID To Admin",url=ADMIN_CONTACT)]
     ]
 
-    await q.message.reply_text(
+    if os.path.exists(QR_FILE):
+        await q.message.reply_photo(
+            photo=open(QR_FILE,"rb"),
+            caption=f"""💳 Pay using UPI
+
+UPI: {UPI}
+
+After payment send screenshot
+
+Your ID: {q.from_user.id}""",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await q.message.reply_text(
 f"""💳 Pay using UPI
 
 UPI: {UPI}
@@ -114,8 +142,7 @@ UPI: {UPI}
 After payment send screenshot
 
 Your ID: {q.from_user.id}""",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
+reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # SCREENSHOT BUTTON
@@ -174,13 +201,9 @@ async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     await q.edit_message_caption("✅ Payment Approved")
 
-    await context.bot.send_message(
-    uid,
-f"""🎉 Subscription Activated
+    await context.bot.send_message(uid,f"🎉 Subscription Activated\nPlan: {plan}\nExpiry: {expiry}")
 
-Plan: {plan}
-Expiry: {expiry}"""
-)
+    await context.bot.send_message(ADMIN_ID,f"✅ User {uid} activated for plan {plan}")
 
 
 # REJECT
@@ -194,6 +217,8 @@ async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
     await q.edit_message_caption("❌ Payment Rejected")
 
     await context.bot.send_message(uid,"❌ Payment rejected")
+
+    await context.bot.send_message(ADMIN_ID,f"❌ Payment rejected for user {uid}")
 
 
 # MY SUB
@@ -217,21 +242,60 @@ f"""📦 Plan: {r[1]}
 )
 
 
-# ADMIN PANEL
-async def admin(update:Update,context:ContextTypes.DEFAULT_TYPE):
+# ADMIN COMMANDS
 
-    if update.effective_user.id!=ADMIN_ID:
-        return
+async def adduser(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    keyboard=[
-    [InlineKeyboardButton("👥 Total Users",callback_data="totalusers")],
-    [InlineKeyboardButton("📋 User List",callback_data="userlist")],
-    [InlineKeyboardButton("⏳ Pending Payments",callback_data="pendingpayments")],
-    [InlineKeyboardButton("📊 Expiry Dashboard",callback_data="expirydashboard")],
-    [InlineKeyboardButton("💰 Payment History",callback_data="paymenthistory")]
-    ]
+    uid=int(context.args[0])
+    plan=context.args[1]
+    days=int(context.args[2])
 
-    await update.message.reply_text("⚙️ Admin Panel",reply_markup=InlineKeyboardMarkup(keyboard))
+    expiry=datetime.now()+timedelta(days=days)
+
+    cur.execute("INSERT INTO users VALUES (?,?,?)",(uid,plan,expiry.strftime("%Y-%m-%d")))
+    conn.commit()
+
+    await update.message.reply_text("User added")
+
+
+async def extend(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=int(context.args[0])
+    days=int(context.args[1])
+
+    cur.execute("SELECT expiry FROM users WHERE user_id=?",(uid,))
+    row=cur.fetchone()
+
+    old=datetime.strptime(row[0],"%Y-%m-%d")
+    new=old+timedelta(days=days)
+
+    cur.execute("UPDATE users SET expiry=? WHERE user_id=?",(new.strftime("%Y-%m-%d"),uid))
+    conn.commit()
+
+    await update.message.reply_text("Expiry extended")
+
+
+async def setexpiry(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=int(context.args[0])
+    days=int(context.args[1])
+
+    new=datetime.now()+timedelta(days=days)
+
+    cur.execute("UPDATE users SET expiry=? WHERE user_id=?",(new.strftime("%Y-%m-%d"),uid))
+    conn.commit()
+
+    await update.message.reply_text("Expiry updated")
+
+
+async def removeuser(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=int(context.args[0])
+
+    cur.execute("DELETE FROM users WHERE user_id=?",(uid,))
+    conn.commit()
+
+    await update.message.reply_text("User removed")
 
 
 # AUTO EXPIRY + REMINDER
@@ -247,30 +311,19 @@ async def expiry_checker(app):
         for r in rows:
 
             uid=r[0]
-            plan=r[1]
             exp=datetime.strptime(r[2],"%Y-%m-%d")
 
             hours=(exp-now).total_seconds()/3600
 
-            # 24h reminder
             if 23 < hours < 24:
-
                 try:
-                    await app.bot.send_message(
-                    uid,
-                    "⚠️ Your subscription will expire in 24 hours"
-                    )
+                    await app.bot.send_message(uid,"⚠️ Your subscription will expire in 24 hours")
                 except:
                     pass
 
-            # expired remove
             if hours < 0:
-
                 try:
-                    await app.bot.send_message(
-                    uid,
-                    "❌ Your subscription has expired"
-                    )
+                    await app.bot.send_message(uid,"❌ Your subscription expired")
                 except:
                     pass
 
@@ -280,11 +333,15 @@ async def expiry_checker(app):
         await asyncio.sleep(3600)
 
 
-# HANDLERS
+# BUILD APP
 app=ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start",start))
 app.add_handler(CommandHandler("admin",admin))
+app.add_handler(CommandHandler("adduser",adduser))
+app.add_handler(CommandHandler("extend",extend))
+app.add_handler(CommandHandler("setexpiry",setexpiry))
+app.add_handler(CommandHandler("removeuser",removeuser))
 
 app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
@@ -300,9 +357,7 @@ app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
 
 async def post_init(app):
-
     asyncio.create_task(expiry_checker(app))
-
 
 app.post_init=post_init
 
