@@ -54,26 +54,7 @@ async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ADMIN PANEL
-async def adminpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id!=ADMIN_ID:
-        return
-
-    keyboard=[
-    [InlineKeyboardButton("👥 Total Users",callback_data="totalusers")],
-    [InlineKeyboardButton("📋 User List",callback_data="userlist")],
-    [InlineKeyboardButton("⏳ Pending Payments",callback_data="pendingpanel")],
-    [InlineKeyboardButton("📊 Expiry Dashboard",callback_data="expiryboard")],
-    [InlineKeyboardButton("💰 Payment History",callback_data="payhistory")]
-    ]
-
-    await update.message.reply_text(
-    "⚙️ Admin Panel",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# PLANS
+# SHOW PLANS
 async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
@@ -101,7 +82,8 @@ async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     keyboard=[
     [InlineKeyboardButton("👀 Demo Channel",url=plan["demo"])],
-    [InlineKeyboardButton("💳 Pay Now",callback_data=f"pay_{key}")]
+    [InlineKeyboardButton("💳 Pay Now",callback_data=f"pay_{key}")],
+    [InlineKeyboardButton("📞 Contact Admin",url=ADMIN_CONTACT)]
     ]
 
     await query.message.reply_text(
@@ -115,13 +97,22 @@ async def paymentinfo(update:Update,context:ContextTypes.DEFAULT_TYPE):
     query=update.callback_query
     await query.answer()
 
+    keyboard=[
+    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
+    [InlineKeyboardButton("👤 Send Your ID To Admin",url=ADMIN_CONTACT)]
+    ]
+
     await query.message.reply_text(
-    f"""💳 Payment Info
+f"""Using UPI
 
 UPI ID: {UPI}
 
-Send screenshot after payment."""
-    )
+After payment send screenshot
+
+Your ID: {query.from_user.id}
+""",
+reply_markup=InlineKeyboardMarkup(keyboard)
+)
 
 # PAY
 async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -132,9 +123,30 @@ async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
     plan=query.data.split("_")[1]
     context.user_data["plan"]=plan
 
+    keyboard=[
+    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
+    [InlineKeyboardButton("👤 Send Your ID To Admin",url=ADMIN_CONTACT)]
+    ]
+
     await query.message.reply_text(
-    f"Send payment screenshot.\n\nYour ID: {query.from_user.id}"
-    )
+f"""Using UPI
+
+UPI ID: {UPI}
+
+After payment send screenshot
+
+Your ID: {query.from_user.id}
+""",
+reply_markup=InlineKeyboardMarkup(keyboard)
+)
+
+# SCREENSHOT BUTTON
+async def screenshot_button(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    query=update.callback_query
+    await query.answer()
+
+    await query.message.reply_text("Please send payment screenshot now.")
 
 # RECEIVE SCREENSHOT
 async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -143,6 +155,7 @@ async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
     plan=context.user_data.get("plan")
 
     if not plan:
+        await update.message.reply_text("Select plan first.")
         return
 
     photo=update.message.photo[-1].file_id
@@ -151,18 +164,22 @@ async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
     conn.commit()
 
     keyboard=[[
-
     InlineKeyboardButton("✅ Approve",callback_data=f"approve_{user.id}_{plan}"),
     InlineKeyboardButton("❌ Reject",callback_data=f"reject_{user.id}")
-
     ]]
 
     await context.bot.send_photo(
     ADMIN_ID,
     photo,
-    caption=f"Payment request\nUser {user.id}\nPlan {plan}",
+    caption=f"""💰 Payment Request
+
+User ID: {user.id}
+Plan: {PLANS[plan]['name']}
+""",
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+    await update.message.reply_text("Payment sent for verification.")
 
 # APPROVE
 async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -188,8 +205,15 @@ async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
     uid,
-    f"Subscription Activated\nJoin:\n{invite.invite_link}"
-    )
+f"""🎉 Subscription Activated
+
+Plan: {PLANS[plan]['name']}
+Expiry: {expiry.date()}
+
+Join Channel:
+{invite.invite_link}
+"""
+)
 
     await query.edit_message_reply_markup(None)
 
@@ -201,7 +225,10 @@ async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     uid=int(query.data.split("_")[1])
 
-    await context.bot.send_message(uid,"Payment rejected")
+    await context.bot.send_message(
+    uid,
+"❌ Payment rejected. Contact admin."
+)
 
     await query.edit_message_reply_markup(None)
 
@@ -223,22 +250,46 @@ async def mysub(update:Update,context:ContextTypes.DEFAULT_TYPE):
     text="Your Subscription\n\n"
 
     for r in rows:
-        text+=f"{PLANS[r[1]]['name']}\nExpiry {r[2]}\n\n"
+
+        text+=f"""
+Plan: {PLANS[r[1]]['name']}
+Expiry: {r[2]}
+-------
+"""
 
     await query.message.reply_text(text)
 
-# PENDING
-async def pendingpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
+# ADMIN PANEL
+async def adminpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id!=ADMIN_ID:
+        return
+
+    keyboard=[
+    [InlineKeyboardButton("👥 Total Users",callback_data="totalusers")],
+    [InlineKeyboardButton("📋 User List",callback_data="userlist")],
+    [InlineKeyboardButton("⏳ Pending Payments",callback_data="pendingpanel")],
+    [InlineKeyboardButton("📊 Expiry Dashboard",callback_data="expiryboard")],
+    [InlineKeyboardButton("💰 Payment History",callback_data="payhistory")]
+    ]
+
+    await update.message.reply_text(
+    "⚙️ Admin Panel",
+    reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# TOTAL USERS
+async def totalusers(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
     await query.answer()
 
-    cur.execute("SELECT * FROM payments")
+    cur.execute("SELECT * FROM users")
     rows=cur.fetchall()
 
-    await query.message.reply_text(f"Pending payments: {len(rows)}")
+    await query.message.reply_text(f"Total users: {len(rows)}")
 
-# USERS LIST
+# USER LIST
 async def userlist(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
@@ -260,16 +311,16 @@ Expiry {r[2]}
 
     await query.message.reply_text(text)
 
-# TOTAL USERS
-async def totalusers(update:Update,context:ContextTypes.DEFAULT_TYPE):
+# PENDING PAYMENTS
+async def pendingpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
     await query.answer()
 
-    cur.execute("SELECT * FROM users")
+    cur.execute("SELECT * FROM payments")
     rows=cur.fetchall()
 
-    await query.message.reply_text(f"Total users: {len(rows)}")
+    await query.message.reply_text(f"Pending payments: {len(rows)}")
 
 # PAYMENT HISTORY
 async def payhistory(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -365,6 +416,7 @@ app.add_handler(CallbackQueryHandler(expiryboard,pattern="expiryboard"))
 
 app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
+app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
 
 app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
