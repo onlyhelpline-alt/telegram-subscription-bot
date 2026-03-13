@@ -37,6 +37,160 @@ async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔥 VIP Subscription Bot",reply_markup=InlineKeyboardMarkup(keyboard))
 
 
+# USER PLANS
+async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    keyboard=[
+    [InlineKeyboardButton("Nitish FX Sniper ₹399",callback_data="plan_nitish")],
+    [InlineKeyboardButton("Stock Learner ₹499",callback_data="plan_stock")],
+    [InlineKeyboardButton("Trader Paradise ₹499",callback_data="plan_trader")]
+    ]
+
+    await q.message.reply_text("Choose your subscription",reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+# PLAN DETAIL
+async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    key=q.data.split("_")[1]
+    plan=PLANS[key]
+
+    keyboard=[
+    [InlineKeyboardButton("👀 Demo Channel",url=plan["demo"])],
+    [InlineKeyboardButton("💳 Pay Now",callback_data=f"pay_{key}")],
+    [InlineKeyboardButton("📞 Contact Admin",url=ADMIN_CONTACT)]
+    ]
+
+    await q.message.reply_text(f"{plan['name']}\nPrice ₹{plan['price']}\nValidity 30 Days",reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+# PAYMENT PAGE
+async def payment(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    await q.message.reply_text(f"Pay using UPI\n\nUPI: {UPI}")
+
+
+# PAY BUTTON
+async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    key=q.data.split("_")[1]
+    context.user_data["plan"]=key
+
+    keyboard=[
+    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
+    [InlineKeyboardButton("👤 Send Your ID To Admin",url=ADMIN_CONTACT)]
+    ]
+
+    await q.message.reply_text(
+f"""Using UPI
+
+UPI ID: {UPI}
+
+After payment send screenshot
+
+Your ID: {q.from_user.id}
+""",
+reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+# SEND SCREENSHOT BUTTON
+async def screenshot_button(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    await q.message.reply_text("Send screenshot now")
+
+
+# RECEIVE SCREENSHOT
+async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    user=update.effective_user
+    plan=context.user_data.get("plan")
+
+    if not plan:
+        await update.message.reply_text("Please select plan first")
+        return
+
+    photo=update.message.photo[-1].file_id
+
+    cur.execute("INSERT INTO payments VALUES (?,?,?)",(user.id,plan,str(datetime.now())))
+    conn.commit()
+
+    keyboard=[[
+    InlineKeyboardButton("✅ Approve",callback_data=f"approve_{user.id}_{plan}"),
+    InlineKeyboardButton("❌ Reject",callback_data=f"reject_{user.id}")
+    ]]
+
+    await context.bot.send_photo(
+    ADMIN_ID,
+    photo,
+    caption=f"Payment Request\nUser ID: {user.id}\nPlan: {plan}",
+    reply_markup=InlineKeyboardMarkup(keyboard)
+)
+
+    await update.message.reply_text("Payment screenshot received\nYour payment is under review")
+
+
+# APPROVE
+async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    data=q.data.split("_")
+    uid=int(data[1])
+    plan=data[2]
+
+    expiry=datetime.now()+timedelta(days=30)
+
+    cur.execute("INSERT INTO users VALUES (?,?,?)",(uid,plan,expiry.strftime("%Y-%m-%d")))
+    conn.commit()
+
+    await context.bot.send_message(uid,f"Subscription Activated\nPlan:{plan}\nExpiry:{expiry}")
+
+
+# REJECT
+async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    uid=int(q.data.split("_")[1])
+
+    await context.bot.send_message(uid,"Payment rejected")
+
+
+# MY SUB
+async def mysub(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    q=update.callback_query
+    await q.answer()
+
+    user=q.from_user.id
+
+    cur.execute("SELECT * FROM users WHERE user_id=?",(user,))
+    r=cur.fetchone()
+
+    if not r:
+        await q.message.reply_text("No active subscription")
+        return
+
+    await q.message.reply_text(f"Plan:{r[1]}\nExpiry:{r[2]}")
+
+
 # ADMIN PANEL
 async def admin(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
@@ -54,8 +208,7 @@ async def admin(update:Update,context:ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚙️ Admin Panel",reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-# ADMIN BUTTON HANDLERS
-
+# ADMIN BUTTONS
 async def totalusers(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     q=update.callback_query
@@ -135,6 +288,9 @@ async def expirydashboard(update:Update,context:ContextTypes.DEFAULT_TYPE):
 # ADMIN COMMANDS
 async def adduser(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
+    if update.effective_user.id!=ADMIN_ID:
+        return
+
     uid=int(context.args[0])
     plan=context.args[1]
     days=int(context.args[2])
@@ -204,12 +360,18 @@ app.add_handler(CallbackQueryHandler(userlist,pattern="userlist"))
 app.add_handler(CallbackQueryHandler(pendingpayments,pattern="pendingpayments"))
 app.add_handler(CallbackQueryHandler(paymenthistory,pattern="paymenthistory"))
 app.add_handler(CallbackQueryHandler(expirydashboard,pattern="expirydashboard"))
+
+# USER HANDLERS
 app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
 app.add_handler(CallbackQueryHandler(pay,pattern="pay_"))
 app.add_handler(CallbackQueryHandler(payment,pattern="payment"))
 app.add_handler(CallbackQueryHandler(mysub,pattern="mysub"))
 app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
+
+app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
+app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
+
 app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
 print("BOT RUNNING")
