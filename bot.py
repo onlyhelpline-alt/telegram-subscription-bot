@@ -18,14 +18,12 @@ PLANS = {
         "channel": -1003627923608,
         "demo": "https://t.me/nitishfxvipgroup"
     },
-
     "stock": {
         "name": "Stock Learner Premium",
         "price": "499",
         "channel": -1003719507955,
         "demo": "https://t.me/+ZEN0OoSYehgxMmFl"
     },
-
     "trader": {
         "name": "Trader Paradise Exclusive",
         "price": "499",
@@ -54,6 +52,7 @@ plan TEXT
 
 conn.commit()
 
+
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -69,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# PLANS
+# SHOW PLANS
 async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -78,10 +77,10 @@ async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("Nitish FX Sniper ₹399", callback_data="plan_nitish")],
         [InlineKeyboardButton("Stock Learner ₹499", callback_data="plan_stock")],
-        [InlineKeyboardButton("Trading Paradise ₹499", callback_data="plan_trader")]
+        [InlineKeyboardButton("Trader Paradise ₹499", callback_data="plan_trader")]
     ]
 
-    await query.edit_message_text(
+    await query.message.reply_text(
         "Choose your subscription",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -102,7 +101,7 @@ async def plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 Contact Admin", url="https://t.me/ckg2754")]
     ]
 
-    await query.edit_message_text(
+    await query.message.reply_text(
         f"{plan['name']}\nPrice ₹{plan['price']}\nValidity 30 Days",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -117,9 +116,14 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = query.data.split("_")[1]
     context.user_data["plan"] = key
 
+    keyboard = [
+        [InlineKeyboardButton("📩 Send Screenshot to Admin", url="https://t.me/ckg2754")]
+    ]
+
     await query.message.reply_photo(
         photo=open("qr.png", "rb"),
-        caption=f"Pay using UPI\n\nUPI ID: {UPI}\n\nAfter payment send screenshot"
+        caption=f"Pay using UPI\n\nUPI ID: {UPI}\n\nAfter payment send screenshot\n\nYour ID: {update.effective_user.id}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -145,7 +149,7 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_photo(
         ADMIN_ID,
         photo,
-        caption=f"Payment Request\nUser {user.id}\nPlan {plan}",
+        caption=f"Payment Request\n\nUser ID: {user.id}\nPlan: {PLANS[plan]['name']}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -199,12 +203,15 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         user_id,
-        "Payment rejected contact admin"
+        "❌ Payment rejected. Contact admin."
     )
 
 
 # MY SUB
 async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
 
     user = update.effective_user.id
 
@@ -212,7 +219,7 @@ async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = cur.fetchall()
 
     if not rows:
-        await update.message.reply_text("No active subscription")
+        await query.message.reply_text("No active subscription")
         return
 
     text = "Your subscriptions\n\n"
@@ -220,7 +227,7 @@ async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for r in rows:
         text += f"{PLANS[r[1]]['name']} expiry {r[2]}\n"
 
-    await update.message.reply_text(text)
+    await query.message.reply_text(text)
 
 
 # ADMIN DASHBOARD
@@ -250,7 +257,7 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT DISTINCT user_id FROM users")
     count = len(cur.fetchall())
 
-    await query.message.reply_text(f"Total users {count}")
+    await query.message.reply_text(f"Total users: {count}")
 
 
 # PENDING PAYMENTS
@@ -262,7 +269,7 @@ async def pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT * FROM payments")
     rows = cur.fetchall()
 
-    await query.message.reply_text(f"Pending payments {len(rows)}")
+    await query.message.reply_text(f"Pending payments: {len(rows)}")
 
 
 # BROADCAST
@@ -283,20 +290,19 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
 
     cur.execute("SELECT DISTINCT user_id FROM users")
-    rows = cur.fetchall()
+    users = cur.fetchall()
 
-    for r in rows:
+    for u in users:
         try:
-            await context.bot.send_message(r[0], msg)
+            await context.bot.send_message(u[0], msg)
         except:
             pass
 
     context.user_data["broadcast"] = False
-
     await update.message.reply_text("Broadcast sent")
 
 
-# EXPIRY CHECK
+# AUTO EXPIRY CHECK
 async def expiry_check(context: ContextTypes.DEFAULT_TYPE):
 
     cur.execute("SELECT * FROM users")
@@ -322,7 +328,7 @@ async def expiry_check(context: ContextTypes.DEFAULT_TYPE):
 
             await context.bot.send_message(
                 user_id,
-                f"Subscription expired\nBuy again\nContact {ADMIN_CONTACT}"
+                f"Subscription expired\n\nBuy again\nContact {ADMIN_CONTACT}"
             )
 
 
@@ -330,14 +336,13 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("admin", admin))
-app.add_handler(CommandHandler("mysub", mysub))
-app.add_handler(CommandHandler("broadcast", broadcast))
 
 app.add_handler(CallbackQueryHandler(plans, pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail, pattern="plan_"))
 app.add_handler(CallbackQueryHandler(pay, pattern="pay_"))
 app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
+app.add_handler(CallbackQueryHandler(mysub, pattern="mysub"))
 app.add_handler(CallbackQueryHandler(total, pattern="total"))
 app.add_handler(CallbackQueryHandler(pending, pattern="pending"))
 
