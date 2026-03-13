@@ -39,6 +39,7 @@ cur.execute("CREATE TABLE IF NOT EXISTS users(user_id INTEGER,plan TEXT,expiry T
 cur.execute("CREATE TABLE IF NOT EXISTS payments(user_id INTEGER,plan TEXT,time TEXT)")
 conn.commit()
 
+
 # START
 async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
@@ -53,6 +54,7 @@ async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
     "🔥 VIP Subscription Bot",
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 # ADMIN PANEL
 async def adminpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -73,154 +75,108 @@ async def adminpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# PLANS
-async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    query=update.callback_query
-    await query.answer()
+# ADD USER
+async def adduser(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    keyboard=[
-    [InlineKeyboardButton("Nitish FX Sniper ₹399",callback_data="plan_nitish")],
-    [InlineKeyboardButton("Stock Learner ₹499",callback_data="plan_stock")],
-    [InlineKeyboardButton("Trader Paradise ₹499",callback_data="plan_trader")]
-    ]
+    if update.effective_user.id!=ADMIN_ID:
+        return
 
-    await query.message.reply_text(
-    "Choose your subscription",
-    reply_markup=InlineKeyboardMarkup(keyboard)
+    try:
+        uid=int(context.args[0])
+        plan=context.args[1]
+        days=int(context.args[2])
+
+        expiry=datetime.now()+timedelta(days=days)
+
+        cur.execute("INSERT INTO users VALUES (?,?,?)",
+        (uid,plan,expiry.strftime("%Y-%m-%d")))
+        conn.commit()
+
+        await update.message.reply_text("✅ User added")
+
+    except:
+        await update.message.reply_text("Usage: /adduser USERID PLAN DAYS")
+
+
+# USER INFO
+async def userinfo(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    uid=int(context.args[0])
+
+    cur.execute("SELECT * FROM users WHERE user_id=?",(uid,))
+    r=cur.fetchone()
+
+    if not r:
+        await update.message.reply_text("User not found")
+        return
+
+    await update.message.reply_text(
+    f"User {r[0]}\nPlan {r[1]}\nExpiry {r[2]}"
     )
 
-# PLAN DETAIL
-async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    query=update.callback_query
-    await query.answer()
+# EXTEND EXPIRY (पुरानी expiry में add)
+async def extend(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    key=query.data.split("_")[1]
-    plan=PLANS[key]
+    uid=int(context.args[0])
+    days=int(context.args[1])
 
-    keyboard=[
-    [InlineKeyboardButton("👀 Demo Channel",url=plan["demo"])],
-    [InlineKeyboardButton("💳 Pay Now",callback_data=f"pay_{key}")],
-    [InlineKeyboardButton("📞 Contact Admin",url=ADMIN_CONTACT)]
-    ]
+    cur.execute("SELECT expiry FROM users WHERE user_id=?",(uid,))
+    row=cur.fetchone()
 
-    await query.message.reply_text(
-    f"{plan['name']}\nPrice ₹{plan['price']}\nValidity 30 Days",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    if not row:
+        await update.message.reply_text("User not found")
+        return
 
-# PAYMENT
-async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    old=datetime.strptime(row[0],"%Y-%m-%d")
+    new=old+timedelta(days=days)
 
-    query=update.callback_query
-    await query.answer()
-
-    key=query.data.split("_")[1]
-    context.user_data["plan"]=key
-
-    keyboard=[
-    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
-    [InlineKeyboardButton("👤 Send ID To Admin",url=ADMIN_CONTACT)]
-    ]
-
-    await query.message.reply_photo(
-    photo=open("qr.png","rb"),
-    caption=f"""Pay using UPI
-
-UPI ID: {UPI}
-
-After payment send screenshot
-
-Your ID: {update.effective_user.id}
-""",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# SCREENSHOT BUTTON
-async def screenshot_button(update:Update,context:ContextTypes.DEFAULT_TYPE):
-
-    query=update.callback_query
-    await query.answer()
-
-    await query.message.reply_text("Send screenshot now.")
-
-# RECEIVE SCREENSHOT
-async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
-
-    user=update.effective_user
-    plan=context.user_data.get("plan")
-
-    photo=update.message.photo[-1].file_id
-
-    cur.execute("INSERT INTO payments VALUES (?,?,?)",(user.id,plan,str(datetime.now())))
+    cur.execute("UPDATE users SET expiry=? WHERE user_id=?",
+    (new.strftime("%Y-%m-%d"),uid))
     conn.commit()
 
-    keyboard=[[
-    InlineKeyboardButton("✅ Approve",callback_data=f"approve_{user.id}_{plan}"),
-    InlineKeyboardButton("❌ Reject",callback_data=f"reject_{user.id}")
-    ]]
+    await update.message.reply_text(f"Expiry extended to {new.date()}")
 
-    await context.bot.send_photo(
-    ADMIN_ID,
-    photo,
-    caption=f"""💰 Payment Request
 
-User ID: {user.id}
-Plan: {PLANS[plan]['name']}
-""",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# SET EXPIRY FROM TODAY
+async def setexpiry(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-# APPROVE
-async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    uid=int(context.args[0])
+    days=int(context.args[1])
 
-    query=update.callback_query
-    await query.answer()
+    new=datetime.now()+timedelta(days=days)
 
-    data=query.data.split("_")
-    user_id=int(data[1])
-    plan=data[2]
-
-    expiry=datetime.now()+timedelta(days=30)
-
-    cur.execute("INSERT INTO users VALUES (?,?,?)",(user_id,plan,expiry.strftime("%Y-%m-%d")))
+    cur.execute("UPDATE users SET expiry=? WHERE user_id=?",
+    (new.strftime("%Y-%m-%d"),uid))
     conn.commit()
 
-    invite=await context.bot.create_chat_invite_link(
-    PLANS[plan]["channel"],
-    member_limit=1,
-    expire_date=datetime.now()+timedelta(minutes=30)
-    )
+    await update.message.reply_text(f"New expiry {new.date()}")
 
-    await context.bot.send_message(
-    user_id,
-    f"""🎉 Subscription Activated
 
-Plan: {PLANS[plan]['name']}
-Expiry: {expiry}
+# SET EXACT DATE
+async def setdate(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-Join:
-{invite.invite_link}
-"""
-    )
+    uid=int(context.args[0])
+    date=context.args[1]
 
-    await query.edit_message_reply_markup(None)
+    cur.execute("UPDATE users SET expiry=? WHERE user_id=?",
+    (date,uid))
+    conn.commit()
 
-# REJECT
-async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"Expiry changed to {date}")
 
-    query=update.callback_query
-    await query.answer()
 
-    user_id=int(query.data.split("_")[1])
+# REMOVE USER
+async def removeuser(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    await context.bot.send_message(
-    user_id,
-    "❌ Payment rejected"
-    )
+    uid=int(context.args[0])
 
-    await query.edit_message_reply_markup(None)
+    cur.execute("DELETE FROM users WHERE user_id=?",(uid,))
+    conn.commit()
+
+    await update.message.reply_text("User removed")
+
 
 # USERS LIST
 async def userlist(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -244,6 +200,7 @@ Expiry: {r[2]}
 
     await query.message.reply_text(text)
 
+
 # TOTAL USERS
 async def totalusers(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
@@ -255,16 +212,6 @@ async def totalusers(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     await query.message.reply_text(f"Total users: {len(rows)}")
 
-# PENDING
-async def pendingpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
-
-    query=update.callback_query
-    await query.answer()
-
-    cur.execute("SELECT * FROM payments")
-    rows=cur.fetchall()
-
-    await query.message.reply_text(f"Pending payments: {len(rows)}")
 
 # PAYMENT HISTORY
 async def payhistory(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -280,13 +227,14 @@ async def payhistory(update:Update,context:ContextTypes.DEFAULT_TYPE):
     for r in rows:
 
         text+=f"""
-User: {r[0]}
-Plan: {r[1]}
-Time: {r[2]}
----------
+User {r[0]}
+Plan {r[1]}
+Time {r[2]}
+-------
 """
 
     await query.message.reply_text(text)
+
 
 # EXPIRY DASHBOARD
 async def expiryboard(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -310,10 +258,11 @@ async def expiryboard(update:Update,context:ContextTypes.DEFAULT_TYPE):
 User {r[0]}
 Plan {r[1]}
 Days Left {days}
---------
+-------
 """
 
     await query.message.reply_text(text)
+
 
 # AUTO EXPIRY
 async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
@@ -328,13 +277,6 @@ async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
         user_id=r[0]
         plan=r[1]
         exp=datetime.strptime(r[2],"%Y-%m-%d")
-
-        if exp-now <= timedelta(hours=24):
-
-            await context.bot.send_message(
-            user_id,
-            "⚠️ Your subscription will expire in 24 hours."
-            )
 
         if exp<now:
 
@@ -351,25 +293,23 @@ async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
             "Subscription expired"
             )
 
+
 app=ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start",start))
 app.add_handler(CommandHandler("admin",adminpanel))
 
-app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
-app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
-app.add_handler(CallbackQueryHandler(pay,pattern="pay_"))
-app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
-app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
-app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
+app.add_handler(CommandHandler("adduser",adduser))
+app.add_handler(CommandHandler("removeuser",removeuser))
+app.add_handler(CommandHandler("userinfo",userinfo))
+app.add_handler(CommandHandler("extend",extend))
+app.add_handler(CommandHandler("setexpiry",setexpiry))
+app.add_handler(CommandHandler("setdate",setdate))
 
 app.add_handler(CallbackQueryHandler(userlist,pattern="userlist"))
 app.add_handler(CallbackQueryHandler(totalusers,pattern="totalusers"))
-app.add_handler(CallbackQueryHandler(pendingpanel,pattern="pendingpanel"))
 app.add_handler(CallbackQueryHandler(payhistory,pattern="payhistory"))
 app.add_handler(CallbackQueryHandler(expiryboard,pattern="expiryboard"))
-
-app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
 job=app.job_queue
 job.run_repeating(expiry_check,interval=3600)
