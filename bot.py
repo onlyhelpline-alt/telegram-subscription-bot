@@ -1,354 +1,351 @@
 import os
 import sqlite3
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 
-from telegram import InlineKeyboardButton,InlineKeyboardMarkup,Update
-from telegram.ext import ApplicationBuilder,CommandHandler,CallbackQueryHandler,MessageHandler,filters,ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-BOT_TOKEN=os.getenv("BOT_TOKEN")
-ADMIN_ID=7066306669
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 7066306669
 
-UPI="bestcourseller@ybl"
-ADMIN_CONTACT="@ckg2754"
+UPI = "bestcourseller@ybl"
+ADMIN_CONTACT = "@ckg2754"
 
-PLANS={
-"nitish":{
-"name":"Nitish FX Sniper VIP",
-"price":"399",
-"channel":-1003627923608,
-"demo":"https://t.me/nitishfxvipgroup"
-},
+PLANS = {
+    "nitish": {
+        "name": "Nitish FX Sniper VIP",
+        "price": "399",
+        "channel": -1003627923608,
+        "demo": "https://t.me/nitishfxvipgroup"
+    },
 
-"stock":{
-"name":"Stock Learner Premium",
-"price":"499",
-"channel":-1003719507955,
-"demo":"https://t.me/+ZEN0OoSYehgxMmFl"
-},
+    "stock": {
+        "name": "Stock Learner Premium",
+        "price": "499",
+        "channel": -1003719507955,
+        "demo": "https://t.me/+ZEN0OoSYehgxMmFl"
+    },
 
-"trader":{
-"name":"Trading Paradise Exclusive",
-"price":"499",
-"channel":-1003707694192,
-"demo":"https://t.me/+fugMmeGFq5IxYmQ9"
+    "trader": {
+        "name": "Trader Paradise Exclusive",
+        "price": "499",
+        "channel": -1003707694192,
+        "demo": "https://t.me/+fugMmeGFq5IxYmQ9"
+    }
 }
-}
 
-conn=sqlite3.connect("data.db",check_same_thread=False)
-cur=conn.cursor()
+conn = sqlite3.connect("data.db", check_same_thread=False)
+cur = conn.cursor()
 
-cur.execute("""CREATE TABLE IF NOT EXISTS users(
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users(
 user_id INTEGER,
 plan TEXT,
 expiry TEXT
-)""")
+)
+""")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS payments(
+cur.execute("""
+CREATE TABLE IF NOT EXISTS payments(
 user_id INTEGER,
 plan TEXT
-)""")
+)
+""")
 
 conn.commit()
 
 # START
-async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-keyboard=[
-[InlineKeyboardButton("💎 Subscription Plans",callback_data="plans")],
-[InlineKeyboardButton("📊 My Subscription",callback_data="mysub")],
-[InlineKeyboardButton("📞 Contact Admin",url="https://t.me/ckg2754")]
-]
+    keyboard = [
+        [InlineKeyboardButton("💎 Subscription Plans", callback_data="plans")],
+        [InlineKeyboardButton("📊 My Subscription", callback_data="mysub")],
+        [InlineKeyboardButton("📞 Contact Admin", url="https://t.me/ckg2754")]
+    ]
 
-await update.message.reply_text(
-"🔥 VIP Subscription Bot",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
+    await update.message.reply_text(
+        "🔥 VIP Subscription Bot",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 # PLANS
-async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-keyboard=[
-[InlineKeyboardButton("Nitish FX Sniper ₹399",callback_data="plan_nitish")],
-[InlineKeyboardButton("Stock Learner ₹499",callback_data="plan_stock")],
-[InlineKeyboardButton("Trader Paradise ₹499",callback_data="plan_trader")]
-]
+    keyboard = [
+        [InlineKeyboardButton("Nitish FX Sniper ₹399", callback_data="plan_nitish")],
+        [InlineKeyboardButton("Stock Learner ₹499", callback_data="plan_stock")],
+        [InlineKeyboardButton("Trading Paradise ₹499", callback_data="plan_trader")]
+    ]
 
-await query.edit_message_text(
-"Choose your subscription",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
+    await query.edit_message_text(
+        "Choose your subscription",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 # PLAN DETAILS
-async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-key=query.data.split("_")[1]
+    key = query.data.split("_")[1]
+    plan = PLANS[key]
 
-plan=PLANS[key]
+    keyboard = [
+        [InlineKeyboardButton("👀 Demo Channel", url=plan["demo"])],
+        [InlineKeyboardButton("💳 Pay Now", callback_data=f"pay_{key}")],
+        [InlineKeyboardButton("📞 Contact Admin", url="https://t.me/ckg2754")]
+    ]
 
-keyboard=[
-[InlineKeyboardButton("👀 Demo Channel",url=plan["demo"])],
-[InlineKeyboardButton("💳 Pay Now",callback_data=f"pay_{key}")],
-[InlineKeyboardButton("📞 Contact Admin",url="https://t.me/ckg2754")]
-]
+    await query.edit_message_text(
+        f"{plan['name']}\nPrice ₹{plan['price']}\nValidity 30 Days",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-await query.edit_message_text(
-f"{plan['name']}\nPrice ₹{plan['price']}\nValidity 30 Days",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
 
 # PAY
-async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-key=query.data.split("_")[1]
+    key = query.data.split("_")[1]
+    context.user_data["plan"] = key
 
-context.user_data["plan"]=key
+    await query.message.reply_photo(
+        photo=open("qr.png", "rb"),
+        caption=f"Pay using UPI\n\nUPI ID: {UPI}\n\nAfter payment send screenshot"
+    )
 
-await query.message.reply_photo(
-photo=open("qr.png","rb"),
-caption=f"Pay using UPI\n\n{UPI}\n\nAfter payment send screenshot"
-)
 
 # SCREENSHOT
-async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-user=update.effective_user
-plan=context.user_data.get("plan")
+    user = update.effective_user
+    plan = context.user_data.get("plan")
 
-if not plan:
-return
+    if not plan:
+        return
 
-photo=update.message.photo[-1].file_id
+    photo = update.message.photo[-1].file_id
 
-cur.execute("INSERT INTO payments VALUES (?,?)",(user.id,plan))
-conn.commit()
+    cur.execute("INSERT INTO payments VALUES (?,?)", (user.id, plan))
+    conn.commit()
 
-keyboard=[[
+    keyboard = [[
+        InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user.id}_{plan}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user.id}")
+    ]]
 
-InlineKeyboardButton("✅ Approve",callback_data=f"approve_{user.id}_{plan}"),
-InlineKeyboardButton("❌ Reject",callback_data=f"reject_{user.id}")
+    await context.bot.send_photo(
+        ADMIN_ID,
+        photo,
+        caption=f"Payment Request\nUser {user.id}\nPlan {plan}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-]]
+    await update.message.reply_text("Payment sent for verification")
 
-await context.bot.send_photo(
-
-ADMIN_ID,
-photo,
-caption=f"Payment Request\nUser {user.id}\nPlan {plan}",
-reply_markup=InlineKeyboardMarkup(keyboard)
-
-)
-
-await update.message.reply_text("Payment sent for verification")
 
 # APPROVE
-async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-data=query.data.split("_")
+    data = query.data.split("_")
+    user_id = int(data[1])
+    plan = data[2]
 
-user_id=int(data[1])
-plan=data[2]
+    expiry = datetime.now() + timedelta(days=30)
 
-expiry=datetime.now()+timedelta(days=30)
+    cur.execute(
+        "INSERT INTO users VALUES (?,?,?)",
+        (user_id, plan, expiry.strftime("%Y-%m-%d"))
+    )
 
-cur.execute(
-"INSERT INTO users VALUES (?,?,?)",
-(user_id,plan,expiry.strftime("%Y-%m-%d"))
-)
+    cur.execute("DELETE FROM payments WHERE user_id=?", (user_id,))
+    conn.commit()
 
-cur.execute("DELETE FROM payments WHERE user_id=?",(user_id,))
-conn.commit()
+    invite = await context.bot.create_chat_invite_link(
+        PLANS[plan]["channel"],
+        member_limit=1,
+        expire_date=datetime.now() + timedelta(minutes=30)
+    )
 
-invite=await context.bot.create_chat_invite_link(
+    await context.bot.send_message(
+        user_id,
+        f"🎉 Subscription Activated\n\nPlan: {PLANS[plan]['name']}\nExpiry: {expiry}\n\nJoin:\n{invite.invite_link}"
+    )
 
-PLANS[plan]["channel"],
-member_limit=1,
-expire_date=datetime.now()+timedelta(minutes=30)
+    await query.edit_message_caption("Approved")
 
-)
-
-await context.bot.send_message(
-
-user_id,
-
-f"🎉 Subscription Activated\n\nPlan {PLANS[plan]['name']}\nExpiry {expiry}\n\nJoin\n{invite.invite_link}"
-
-)
-
-await query.edit_message_caption("Approved")
 
 # REJECT
-async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-user_id=int(query.data.split("_")[1])
+    user_id = int(query.data.split("_")[1])
 
-cur.execute("DELETE FROM payments WHERE user_id=?",(user_id,))
-conn.commit()
+    cur.execute("DELETE FROM payments WHERE user_id=?", (user_id,))
+    conn.commit()
 
-await context.bot.send_message(
-user_id,
-"Payment rejected contact admin"
-)
+    await context.bot.send_message(
+        user_id,
+        "Payment rejected contact admin"
+    )
+
 
 # MY SUB
-async def mysub(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-user=update.effective_user.id
+    user = update.effective_user.id
 
-cur.execute("SELECT * FROM users WHERE user_id=?",(user,))
-rows=cur.fetchall()
+    cur.execute("SELECT * FROM users WHERE user_id=?", (user,))
+    rows = cur.fetchall()
 
-if not rows:
+    if not rows:
+        await update.message.reply_text("No active subscription")
+        return
 
-await update.message.reply_text("No active subscription")
-return
+    text = "Your subscriptions\n\n"
 
-text="Your subscriptions\n\n"
+    for r in rows:
+        text += f"{PLANS[r[1]]['name']} expiry {r[2]}\n"
 
-for r in rows:
+    await update.message.reply_text(text)
 
-text+=f"{PLANS[r[1]]['name']} expiry {r[2]}\n"
-
-await update.message.reply_text(text)
 
 # ADMIN DASHBOARD
-async def admin(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-if update.effective_user.id!=ADMIN_ID:
-return
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-keyboard=[
-[InlineKeyboardButton("👥 Total Users",callback_data="total")],
-[InlineKeyboardButton("⏳ Pending Payments",callback_data="pending")],
-[InlineKeyboardButton("📢 Broadcast",callback_data="broadcast")]
-]
+    keyboard = [
+        [InlineKeyboardButton("👥 Total Users", callback_data="total")],
+        [InlineKeyboardButton("⏳ Pending Payments", callback_data="pending")],
+        [InlineKeyboardButton("📢 Broadcast", callback_data="broadcast")]
+    ]
 
-await update.message.reply_text(
-"Admin Dashboard",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
+    await update.message.reply_text(
+        "Admin Dashboard",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 # TOTAL USERS
-async def total(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+    query = update.callback_query
+    await query.answer()
 
-cur.execute("SELECT DISTINCT user_id FROM users")
-count=len(cur.fetchall())
+    cur.execute("SELECT DISTINCT user_id FROM users")
+    count = len(cur.fetchall())
 
-await query.message.reply_text(f"Total users {count}")
+    await query.message.reply_text(f"Total users {count}")
 
-# PENDING
-async def pending(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-query=update.callback_query
-await query.answer()
+# PENDING PAYMENTS
+async def pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-cur.execute("SELECT * FROM payments")
-rows=cur.fetchall()
+    query = update.callback_query
+    await query.answer()
 
-await query.message.reply_text(f"Pending payments {len(rows)}")
+    cur.execute("SELECT * FROM payments")
+    rows = cur.fetchall()
+
+    await query.message.reply_text(f"Pending payments {len(rows)}")
+
 
 # BROADCAST
-async def broadcast(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-if update.effective_user.id!=ADMIN_ID:
-return
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-context.user_data["broadcast"]=True
+    context.user_data["broadcast"] = True
+    await update.message.reply_text("Send message to broadcast")
 
-await update.message.reply_text("Send message to broadcast")
 
-async def send_broadcast(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-if not context.user_data.get("broadcast"):
-return
+    if not context.user_data.get("broadcast"):
+        return
 
-msg=update.message.text
+    msg = update.message.text
 
-cur.execute("SELECT DISTINCT user_id FROM users")
-rows=cur.fetchall()
+    cur.execute("SELECT DISTINCT user_id FROM users")
+    rows = cur.fetchall()
 
-for r in rows:
+    for r in rows:
+        try:
+            await context.bot.send_message(r[0], msg)
+        except:
+            pass
 
-try:
-await context.bot.send_message(r[0],msg)
-except:
-pass
+    context.user_data["broadcast"] = False
 
-context.user_data["broadcast"]=False
+    await update.message.reply_text("Broadcast sent")
 
-await update.message.reply_text("Broadcast sent")
 
 # EXPIRY CHECK
-async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
+async def expiry_check(context: ContextTypes.DEFAULT_TYPE):
 
-cur.execute("SELECT * FROM users")
-rows=cur.fetchall()
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
 
-now=datetime.now()
+    now = datetime.now()
 
-for r in rows:
+    for r in rows:
 
-user_id=r[0]
-plan=r[1]
-exp=datetime.strptime(r[2],"%Y-%m-%d")
+        user_id = r[0]
+        plan = r[1]
+        exp = datetime.strptime(r[2], "%Y-%m-%d")
 
-if exp<now:
+        if exp < now:
 
-await context.bot.ban_chat_member(
+            await context.bot.ban_chat_member(
+                PLANS[plan]["channel"],
+                user_id
+            )
 
-PLANS[plan]["channel"],
-user_id
+            cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
+            conn.commit()
 
-)
+            await context.bot.send_message(
+                user_id,
+                f"Subscription expired\nBuy again\nContact {ADMIN_CONTACT}"
+            )
 
-cur.execute("DELETE FROM users WHERE user_id=?",(user_id,))
-conn.commit()
 
-await context.bot.send_message(
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-user_id,
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", admin))
+app.add_handler(CommandHandler("mysub", mysub))
+app.add_handler(CommandHandler("broadcast", broadcast))
 
-f"Subscription expired\nBuy again\nContact {ADMIN_CONTACT}"
+app.add_handler(CallbackQueryHandler(plans, pattern="plans"))
+app.add_handler(CallbackQueryHandler(plan_detail, pattern="plan_"))
+app.add_handler(CallbackQueryHandler(pay, pattern="pay_"))
+app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
+app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
+app.add_handler(CallbackQueryHandler(total, pattern="total"))
+app.add_handler(CallbackQueryHandler(pending, pattern="pending"))
 
-)
+app.add_handler(MessageHandler(filters.PHOTO, screenshot))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_broadcast))
 
-app=ApplicationBuilder().token(BOT_TOKEN).build()
-
-app.add_handler(CommandHandler("start",start))
-app.add_handler(CommandHandler("admin",admin))
-app.add_handler(CommandHandler("mysub",mysub))
-app.add_handler(CommandHandler("broadcast",broadcast))
-
-app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
-app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
-app.add_handler(CallbackQueryHandler(pay,pattern="pay_"))
-app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
-app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
-app.add_handler(CallbackQueryHandler(total,pattern="total"))
-app.add_handler(CallbackQueryHandler(pending,pattern="pending"))
-
-app.add_handler(MessageHandler(filters.PHOTO,screenshot))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,send_broadcast))
-
-job=app.job_queue
-job.run_repeating(expiry_check,interval=3600)
+job = app.job_queue
+job.run_repeating(expiry_check, interval=3600)
 
 print("BOT RUNNING")
 
