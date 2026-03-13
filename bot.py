@@ -1,152 +1,234 @@
-import sqlite3
 import os
+import sqlite3
 from datetime import datetime, timedelta
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+ApplicationBuilder,
+CommandHandler,
+ContextTypes,
+CallbackQueryHandler,
+MessageHandler,
+filters
+)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 GROUP_ID = int(os.getenv("GROUP_ID"))
 
-ADMIN_USERNAME = "@ckg2754"
-
-conn = sqlite3.connect("users.db")
+conn = sqlite3.connect("users.db", check_same_thread=False)
 cur = conn.cursor()
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
-user_id INTEGER,
+user_id INTEGER PRIMARY KEY,
 expiry TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS payments(
+user_id INTEGER,
+file_id TEXT
 )
 """)
 
 conn.commit()
 
-
+# START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"""
-🔥 VIP Subscription Bot
 
-Subscription lene ke liye payment karein.
+    keyboard = [
+        [InlineKeyboardButton("💳 Buy Subscription", callback_data="buy")],
+        [InlineKeyboardButton("📊 My Status", callback_data="status")]
+    ]
 
-Payment ke baad proof bheje:
+    await update.message.reply_text(
+        "🔥 VIP Subscription Bot\n\nPremium access ke liye subscription lo.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-👉 {ADMIN_USERNAME}
+# BUY
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-Admin approve karega aur access mil jayega.
-"""
-    await update.message.reply_text(text)
+    query = update.callback_query
+    await query.answer()
 
+    keyboard = [
+        [InlineKeyboardButton("💰 Pay via UPI", url="upi://pay?pa=yourupi@upi&pn=VIP&am=199")]
+    ]
 
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await query.message.reply_text(
+        "💳 Payment karo.\n\nPayment ke baad screenshot bhejo.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# SCREENSHOT VERIFY
+async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    file_id = update.message.photo[-1].file_id
+
+    cur.execute("INSERT INTO payments VALUES (?,?)",(user_id,file_id))
+    conn.commit()
+
+    keyboard = [[
+        InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}")
+    ]]
+
+    await context.bot.send_photo(
+        ADMIN_ID,
+        file_id,
+        caption=f"Payment proof from {user_id}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    await update.message.reply_text("Screenshot received. Waiting for admin approval.")
+
+# APPROVE
+async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    user_id = int(query.data.split("_")[1])
+
+    expiry = datetime.now() + timedelta(days=30)
+
+    cur.execute(
+    "INSERT OR REPLACE INTO users VALUES (?,?)",
+    (user_id, expiry.strftime("%Y-%m-%d"))
+    )
+
+    conn.commit()
+
+    invite = await context.bot.create_chat_invite_link(GROUP_ID,member_limit=1)
+
+    await context.bot.send_message(
+    user_id,
+    f"✅ Subscription Approved\n\nJoin:\n{invite.invite_link}"
+    )
+
+    await query.edit_message_caption("User Approved")
+
+# STATUS
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+
+    cur.execute("SELECT expiry FROM users WHERE user_id=?", (user_id,))
+    data = cur.fetchone()
+
+    if data:
+        await query.message.reply_text(f"Your expiry: {data[0]}")
+    else:
+        await query.message.reply_text("No active subscription")
+
+# ADMIN PANEL
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if update.effective_user.id != ADMIN_ID:
         return
 
-    try:
-        user_id = int(context.args[0])
-        days = int(context.args[1])
+    keyboard = [
+        [InlineKeyboardButton("📊 Users", callback_data="users")],
+        [InlineKeyboardButton("📩 Broadcast", callback_data="broadcast")]
+    ]
 
-        expiry = datetime.now() + timedelta(days=days)
+    await update.message.reply_text(
+        "Admin Panel",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-        cur.execute("INSERT INTO users VALUES (?,?)",
-                    (user_id, expiry.strftime("%Y-%m-%d")))
-        conn.commit()
-
-        await context.bot.unban_chat_member(GROUP_ID, user_id)
-
-        await context.bot.send_message(
-            user_id,
-            f"✅ Subscription Active\n\nExpiry: {expiry.strftime('%Y-%m-%d')}"
-        )
-
-        await update.message.reply_text("User Added")
-
-    except:
-        await update.message.reply_text("/add USER_ID DAYS")
-
-
-async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    try:
-        user_id = int(context.args[0])
-
-        cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
-        conn.commit()
-
-        await context.bot.ban_chat_member(GROUP_ID, user_id)
-
-        await update.message.reply_text("User Removed")
-
-    except:
-        await update.message.reply_text("/remove USER_ID")
-
-
+# USERS LIST
 async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
+
+    query = update.callback_query
+    await query.answer()
 
     cur.execute("SELECT * FROM users")
     data = cur.fetchall()
 
-    text = "Active Users\n\n"
+    text="Active Users\n\n"
 
     for u in data:
-        text += f"{u[0]} | {u[1]}\n"
+        text+=f"{u[0]} | {u[1]}\n"
 
-    await update.message.reply_text(text)
+    await query.message.reply_text(text)
 
+# BROADCAST
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    msg=" ".join(context.args)
+
+    cur.execute("SELECT user_id FROM users")
+    users=cur.fetchall()
+
+    for u in users:
+        try:
+            await context.bot.send_message(u[0],msg)
+        except:
+            pass
+
+    await update.message.reply_text("Broadcast sent")
+
+# AUTO EXPIRY
 async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now()
 
     cur.execute("SELECT * FROM users")
-    users = cur.fetchall()
+    users=cur.fetchall()
 
-    for user in users:
+    now=datetime.now()
 
-        user_id = user[0]
-        expiry = datetime.strptime(user[1], "%Y-%m-%d")
+    for u in users:
 
-        if expiry < now:
+        user_id=u[0]
+        expiry=datetime.strptime(u[1],"%Y-%m-%d")
 
-            await context.bot.ban_chat_member(GROUP_ID, user_id)
+        if expiry<now:
+
+            await context.bot.ban_chat_member(GROUP_ID,user_id)
 
             cur.execute("DELETE FROM users WHERE user_id=?", (user_id,))
             conn.commit()
 
-        elif expiry - now <= timedelta(days=1):
+        elif expiry-now<=timedelta(days=1):
 
-            await context.bot.send_message(
+            try:
+                await context.bot.send_message(
                 user_id,
-                f"""
-⚠ Subscription Expiring Soon
+                "⚠️ Subscription expiring soon\nRenew now."
+                )
+            except:
+                pass
 
-Renew now to continue access.
+# MAIN
+async def main():
 
-Contact:
-{ADMIN_USERNAME}
-"""
-            )
+    app=ApplicationBuilder().token(BOT_TOKEN).build()
 
+    app.add_handler(CommandHandler("start",start))
+    app.add_handler(CommandHandler("admin",admin))
+    app.add_handler(CommandHandler("broadcast",broadcast))
 
-def main():
+    app.add_handler(CallbackQueryHandler(buy,pattern="buy"))
+    app.add_handler(CallbackQueryHandler(status,pattern="status"))
+    app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
+    app.add_handler(CallbackQueryHandler(users,pattern="users"))
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("remove", remove))
-    app.add_handler(CommandHandler("users", users))
+    job=app.job_queue
+    job.run_repeating(check_expiry,interval=3600)
 
-    job = app.job_queue
-    job.run_repeating(check_expiry, interval=3600)
+    await app.run_polling()
 
-    print("Bot Started")
-
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+import asyncio
+asyncio.run(main())
