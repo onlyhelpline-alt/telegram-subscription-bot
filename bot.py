@@ -54,7 +54,7 @@ async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# SHOW PLANS
+# PLANS
 async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
@@ -71,7 +71,7 @@ async def plans(update:Update,context:ContextTypes.DEFAULT_TYPE):
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# PLAN DETAIL
+# PLAN DETAILS
 async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
@@ -92,26 +92,17 @@ async def plan_detail(update:Update,context:ContextTypes.DEFAULT_TYPE):
     )
 
 # PAYMENT INFO
-async def paymentinfo(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def payment(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
     await query.answer()
-
-    keyboard=[
-    [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
-    [InlineKeyboardButton("👤 Send Your ID To Admin",url=ADMIN_CONTACT)]
-    ]
 
     await query.message.reply_text(
 f"""Using UPI
 
 UPI ID: {UPI}
 
-After payment send screenshot
-
-Your ID: {query.from_user.id}
-""",
-reply_markup=InlineKeyboardMarkup(keyboard)
+After payment send screenshot"""
 )
 
 # PAY
@@ -120,25 +111,26 @@ async def pay(update:Update,context:ContextTypes.DEFAULT_TYPE):
     query=update.callback_query
     await query.answer()
 
-    plan=query.data.split("_")[1]
-    context.user_data["plan"]=plan
+    key=query.data.split("_")[1]
+    context.user_data["plan"]=key
 
     keyboard=[
     [InlineKeyboardButton("📤 Send Screenshot",callback_data="sendscreenshot")],
     [InlineKeyboardButton("👤 Send Your ID To Admin",url=ADMIN_CONTACT)]
     ]
 
-    await query.message.reply_text(
-f"""Using UPI
+    await query.message.reply_photo(
+    photo=open("qr.png","rb"),
+    caption=f"""Using UPI
 
 UPI ID: {UPI}
 
 After payment send screenshot
 
-Your ID: {query.from_user.id}
+Your ID: {update.effective_user.id}
 """,
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
+    reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 # SCREENSHOT BUTTON
 async def screenshot_button(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -146,7 +138,7 @@ async def screenshot_button(update:Update,context:ContextTypes.DEFAULT_TYPE):
     query=update.callback_query
     await query.answer()
 
-    await query.message.reply_text("Please send payment screenshot now.")
+    await query.message.reply_text("Send payment screenshot now.")
 
 # RECEIVE SCREENSHOT
 async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -160,7 +152,8 @@ async def screenshot(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     photo=update.message.photo[-1].file_id
 
-    cur.execute("INSERT INTO payments VALUES (?,?,?)",(user.id,plan,str(datetime.now())))
+    cur.execute("INSERT INTO payments VALUES (?,?,?)",
+    (user.id,plan,str(datetime.now())))
     conn.commit()
 
     keyboard=[[
@@ -179,7 +172,7 @@ Plan: {PLANS[plan]['name']}
     reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    await update.message.reply_text("Payment sent for verification.")
+    await update.message.reply_text("Payment sent to admin.")
 
 # APPROVE
 async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
@@ -188,13 +181,13 @@ async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data=query.data.split("_")
-    uid=int(data[1])
+    user_id=int(data[1])
     plan=data[2]
 
     expiry=datetime.now()+timedelta(days=30)
 
     cur.execute("INSERT INTO users VALUES (?,?,?)",
-    (uid,plan,expiry.strftime("%Y-%m-%d")))
+    (user_id,plan,expiry.strftime("%Y-%m-%d")))
     conn.commit()
 
     invite=await context.bot.create_chat_invite_link(
@@ -204,13 +197,13 @@ async def approve(update:Update,context:ContextTypes.DEFAULT_TYPE):
     )
 
     await context.bot.send_message(
-    uid,
+    user_id,
 f"""🎉 Subscription Activated
 
 Plan: {PLANS[plan]['name']}
-Expiry: {expiry.date()}
+Expiry: {expiry}
 
-Join Channel:
+Join link:
 {invite.invite_link}
 """
 )
@@ -223,16 +216,14 @@ async def reject(update:Update,context:ContextTypes.DEFAULT_TYPE):
     query=update.callback_query
     await query.answer()
 
-    uid=int(query.data.split("_")[1])
+    user_id=int(query.data.split("_")[1])
 
     await context.bot.send_message(
-    uid,
-"❌ Payment rejected. Contact admin."
+    user_id,
+    "❌ Payment rejected. Contact admin."
 )
 
-    await query.edit_message_reply_markup(None)
-
-# MY SUB
+# MY SUBSCRIPTION
 async def mysub(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     query=update.callback_query
@@ -241,26 +232,19 @@ async def mysub(update:Update,context:ContextTypes.DEFAULT_TYPE):
     uid=query.from_user.id
 
     cur.execute("SELECT * FROM users WHERE user_id=?",(uid,))
-    rows=cur.fetchall()
+    r=cur.fetchone()
 
-    if not rows:
+    if not r:
         await query.message.reply_text("No subscription")
         return
 
-    text="Your Subscription\n\n"
-
-    for r in rows:
-
-        text+=f"""
-Plan: {PLANS[r[1]]['name']}
-Expiry: {r[2]}
--------
-"""
-
-    await query.message.reply_text(text)
+    await query.message.reply_text(
+f"""Plan: {r[1]}
+Expiry: {r[2]}"""
+)
 
 # ADMIN PANEL
-async def adminpanel(update:Update,context:ContextTypes.DEFAULT_TYPE):
+async def admin(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id!=ADMIN_ID:
         return
@@ -301,13 +285,7 @@ async def userlist(update:Update,context:ContextTypes.DEFAULT_TYPE):
     text="USER LIST\n\n"
 
     for r in rows:
-
-        text+=f"""
-User {r[0]}
-Plan {r[1]}
-Expiry {r[2]}
--------
-"""
+        text+=f"{r[0]} | {r[1]} | {r[2]}\n"
 
     await query.message.reply_text(text)
 
@@ -331,16 +309,10 @@ async def payhistory(update:Update,context:ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT * FROM payments")
     rows=cur.fetchall()
 
-    text="Payment History\n\n"
+    text="PAYMENT HISTORY\n\n"
 
     for r in rows:
-
-        text+=f"""
-User {r[0]}
-Plan {r[1]}
-Time {r[2]}
--------
-"""
+        text+=f"{r[0]} | {r[1]} | {r[2]}\n"
 
     await query.message.reply_text(text)
 
@@ -355,19 +327,14 @@ async def expiryboard(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     now=datetime.now()
 
-    text="Expiry Dashboard\n\n"
+    text="EXPIRY DASHBOARD\n\n"
 
     for r in rows:
 
         exp=datetime.strptime(r[2],"%Y-%m-%d")
         days=(exp-now).days
 
-        text+=f"""
-User {r[0]}
-Plan {r[1]}
-Days left {days}
--------
-"""
+        text+=f"{r[0]} | {r[1]} | {days} days left\n"
 
     await query.message.reply_text(text)
 
@@ -381,7 +348,7 @@ async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
 
     for r in rows:
 
-        uid=r[0]
+        user_id=r[0]
         plan=r[1]
         exp=datetime.strptime(r[2],"%Y-%m-%d")
 
@@ -389,34 +356,37 @@ async def expiry_check(context:ContextTypes.DEFAULT_TYPE):
 
             await context.bot.ban_chat_member(
             PLANS[plan]["channel"],
-            uid
+            user_id
             )
 
-            cur.execute("DELETE FROM users WHERE user_id=?",(uid,))
+            cur.execute("DELETE FROM users WHERE user_id=?",(user_id,))
             conn.commit()
 
-            await context.bot.send_message(uid,"Subscription expired")
+            await context.bot.send_message(
+            user_id,
+            "Subscription expired"
+            )
 
 app=ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start",start))
-app.add_handler(CommandHandler("admin",adminpanel))
+app.add_handler(CommandHandler("admin",admin))
 
 app.add_handler(CallbackQueryHandler(plans,pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail,pattern="plan_"))
-app.add_handler(CallbackQueryHandler(paymentinfo,pattern="payment"))
 app.add_handler(CallbackQueryHandler(pay,pattern="pay_"))
+app.add_handler(CallbackQueryHandler(payment,pattern="payment"))
 app.add_handler(CallbackQueryHandler(mysub,pattern="mysub"))
+app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
+
+app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
+app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
 
 app.add_handler(CallbackQueryHandler(userlist,pattern="userlist"))
 app.add_handler(CallbackQueryHandler(totalusers,pattern="totalusers"))
 app.add_handler(CallbackQueryHandler(pendingpanel,pattern="pendingpanel"))
 app.add_handler(CallbackQueryHandler(payhistory,pattern="payhistory"))
 app.add_handler(CallbackQueryHandler(expiryboard,pattern="expiryboard"))
-
-app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
-app.add_handler(CallbackQueryHandler(reject,pattern="reject_"))
-app.add_handler(CallbackQueryHandler(screenshot_button,pattern="sendscreenshot"))
 
 app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
