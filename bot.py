@@ -15,6 +15,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 GROUP_ID = int(os.getenv("GROUP_ID"))
 
+# DATABASE
 conn = sqlite3.connect("users.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -22,13 +23,6 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
 user_id INTEGER PRIMARY KEY,
 expiry TEXT
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS payments(
-user_id INTEGER,
-file_id TEXT
 )
 """)
 
@@ -44,12 +38,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "🔥 VIP Subscription Bot\n\nPremium access ke liye subscription lo.",
+        "🔥 VIP Subscription Bot\n\nSubscription lene ke liye Buy button dabao.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# BUY BUTTON
+# BUY
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -60,19 +54,16 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await query.message.reply_text(
-        "💳 Payment karo.\n\nPayment ke baad screenshot bhejo.",
+        "Payment karo.\n\nPayment ke baad screenshot bhejo.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# SCREENSHOT RECEIVE
+# RECEIVE SCREENSHOT
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     file_id = update.message.photo[-1].file_id
-
-    cur.execute("INSERT INTO payments VALUES (?,?)",(user_id,file_id))
-    conn.commit()
 
     keyboard = [[
         InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user_id}")
@@ -85,7 +76,9 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    await update.message.reply_text("Screenshot received. Waiting for admin approval.")
+    await update.message.reply_text(
+        "Screenshot received.\nAdmin approval pending."
+    )
 
 
 # APPROVE USER
@@ -118,7 +111,7 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_caption("User Approved")
 
 
-# USER STATUS
+# STATUS
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -142,17 +135,16 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton("📊 Users", callback_data="users")],
-        [InlineKeyboardButton("📩 Broadcast", callback_data="broadcast")]
+        [InlineKeyboardButton("📊 Users", callback_data="users")]
     ]
 
     await update.message.reply_text(
-        "Admin Panel",
+        "Admin Dashboard",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-# USERS LIST
+# USER LIST
 async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
@@ -164,7 +156,7 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text="Active Users\n\n"
 
     for u in data:
-        text+=f"{u[0]} | {u[1]}\n"
+        text += f"{u[0]} | {u[1]}\n"
 
     await query.message.reply_text(text)
 
@@ -186,7 +178,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("Broadcast sent")
+    await update.message.reply_text("Broadcast Sent")
 
 
 # AUTO EXPIRY
@@ -223,7 +215,7 @@ async def check_expiry(context: ContextTypes.DEFAULT_TYPE):
 # MAIN
 async def main():
 
-    app=ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start",start))
     app.add_handler(CommandHandler("admin",admin))
@@ -236,30 +228,14 @@ async def main():
 
     app.add_handler(MessageHandler(filters.PHOTO,screenshot))
 
-    job=app.job_queue
+    job = app.job_queue
     job.run_repeating(check_expiry,interval=3600)
 
-    print("Bot Running...")
+    print("Bot Running")
 
     await app.run_polling()
 
-
-import asyncio
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())    app.add_handler(CommandHandler("broadcast",broadcast))
-
-    app.add_handler(CallbackQueryHandler(buy,pattern="buy"))
-    app.add_handler(CallbackQueryHandler(status,pattern="status"))
-    app.add_handler(CallbackQueryHandler(approve,pattern="approve_"))
-    app.add_handler(CallbackQueryHandler(users,pattern="users"))
-
-    app.add_handler(MessageHandler(filters.PHOTO,screenshot))
-
-    job=app.job_queue
-    job.run_repeating(check_expiry,interval=3600)
-
-    await app.run_polling()
-
-import asyncio
-asyncio.run(main())
+    import asyncio
+    asyncio.run(main())
