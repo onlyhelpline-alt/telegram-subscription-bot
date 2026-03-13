@@ -33,6 +33,7 @@ cur.execute("CREATE TABLE IF NOT EXISTS users(user_id INTEGER, plan TEXT, expiry
 cur.execute("CREATE TABLE IF NOT EXISTS payments(user_id INTEGER, plan TEXT, time TEXT)")
 conn.commit()
 
+
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -232,30 +233,103 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(uid, "❌ Payment rejected")
 
 
-# MY SUB
-async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ADMIN PANEL
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("👥 Total Users", callback_data="totalusers")],
+        [InlineKeyboardButton("📋 User List", callback_data="userlist")],
+        [InlineKeyboardButton("⏳ Pending Payments", callback_data="pendingpayments")],
+        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expirydashboard")],
+        [InlineKeyboardButton("💰 Payment History", callback_data="paymenthistory")]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ Admin Panel",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ADMIN PANEL FUNCTIONS
+async def totalusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
     await q.answer()
 
-    user = q.from_user.id
+    cur.execute("SELECT COUNT(*) FROM users")
+    count = cur.fetchone()[0]
 
-    cur.execute("SELECT * FROM users WHERE user_id=?", (user,))
-    r = cur.fetchone()
+    await q.message.reply_text(f"👥 Total Users: {count}")
 
-    if not r:
-        await q.message.reply_text("❌ No active subscription")
-        return
 
-    await q.message.reply_text(
-        f"""📦 Plan: {r[1]}
+async def userlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-📅 Expiry: {r[2]}"""
-    )
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    text = "📋 User List\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def pendingpayments(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM payments")
+    rows = cur.fetchall()
+
+    text = "⏳ Pending Payments\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def expirydashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    text = "📊 Expiry Dashboard\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+async def paymenthistory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM payments")
+    rows = cur.fetchall()
+
+    text = "💰 Payment History\n\n"
+
+    for r in rows:
+        text += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
 
 
 # ADMIN COMMANDS
-
 async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
@@ -326,7 +400,6 @@ async def extend(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # AUTO EXPIRY
-
 async def expiry_checker(app):
 
     while True:
@@ -370,10 +443,10 @@ async def expiry_checker(app):
 
 
 # APP
-
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", admin))
 app.add_handler(CommandHandler("adduser", adduser))
 app.add_handler(CommandHandler("removeuser", removeuser))
 app.add_handler(CommandHandler("setexpiry", setexpiry))
@@ -388,6 +461,12 @@ app.add_handler(CallbackQueryHandler(screenshot_button, pattern="sendscreenshot"
 
 app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
+
+app.add_handler(CallbackQueryHandler(totalusers, pattern="totalusers"))
+app.add_handler(CallbackQueryHandler(userlist, pattern="userlist"))
+app.add_handler(CallbackQueryHandler(pendingpayments, pattern="pendingpayments"))
+app.add_handler(CallbackQueryHandler(expirydashboard, pattern="expirydashboard"))
+app.add_handler(CallbackQueryHandler(paymenthistory, pattern="paymenthistory"))
 
 app.add_handler(MessageHandler(filters.PHOTO, screenshot))
 
