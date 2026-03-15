@@ -47,7 +47,7 @@ conn.commit()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-keyboard = [
+    keyboard = [
 [InlineKeyboardButton("💎 Subscription Plans", callback_data="plans")],
 [InlineKeyboardButton("📊 My Subscription", callback_data="mysub")],
 [InlineKeyboardButton("📞 Contact Admin", url=ADMIN_CONTACT)]
