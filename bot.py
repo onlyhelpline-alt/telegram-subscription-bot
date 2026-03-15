@@ -156,8 +156,8 @@ async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
 
     keyboard = [
-        [InlineKeyboardButton("📸 Send Screenshot", callback_data="send_ss")],
-        [InlineKeyboardButton("🆔 Send ID", callback_data="send_id")]
+        [InlineKeyboardButton("📸 After payment Send Screenshot", callback_data="send_ss")],
+        [InlineKeyboardButton("🆔 Send Your ID to Admin", callback_data="send_id")]
     ]
 
     await q.message.reply_photo(
