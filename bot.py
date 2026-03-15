@@ -283,6 +283,29 @@ f"""
 reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- MY SUB ----------------
+
+async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    uid = q.from_user.id
+
+    cur.execute("SELECT * FROM users WHERE user_id=?", (uid,))
+    r = cur.fetchone()
+
+    if not r:
+        await q.message.reply_text("❌ No active subscription")
+        return
+
+    await q.message.reply_text(
+f"""
+📦 Plan: {r[2]}
+📅 Join: {r[3]}
+⏳ Expiry: {r[4]}
+"""
+    )
 # ---------------- SCREENSHOT ----------------
 
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
