@@ -5,12 +5,12 @@ from datetime import datetime, timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-ApplicationBuilder,
-CommandHandler,
-CallbackQueryHandler,
-MessageHandler,
-ContextTypes,
-filters
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -24,10 +24,12 @@ DEMO_LINK = "https://t.me/nitishfxvipgroup"
 QR_FILE = "qr.png"
 
 PLANS = {
-"nitish": {"name": "Nitish FX Sniper VIP", "price": "399"},
-"stock": {"name": "Stock Learner Premium", "price": "499"},
-"trader": {"name": "Trader Paradise Exclusive", "price": "499"}
+    "nitish": {"name": "Nitish FX Sniper VIP", "price": "399"},
+    "stock": {"name": "Stock Learner Premium", "price": "499"},
+    "trader": {"name": "Trader Paradise Exclusive", "price": "499"}
 }
+
+# ---------------- DATABASE ----------------
 
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cur = conn.cursor()
@@ -50,18 +52,10 @@ plan TEXT
 )
 """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS payments(
-user_id INTEGER,
-plan TEXT,
-time TEXT
-)
-""")
-
 conn.commit()
 
+# ---------------- START ----------------
 
-# START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
@@ -76,8 +70,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- ADMIN PANEL ----------------
 
-# ADMIN PANEL
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_user.id != ADMIN_ID:
@@ -94,28 +88,26 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- TOTAL USERS ----------------
 
-# TOTAL USERS
 async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
     await q.answer()
 
     cur.execute("SELECT COUNT(*) FROM users")
-
     total = cur.fetchone()[0]
 
     await q.message.reply_text(f"👥 Total Users: {total}")
 
+# ---------------- USER LIST ----------------
 
-# USER LIST
 async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
     await q.answer()
 
     cur.execute("SELECT * FROM users")
-
     rows = cur.fetchall()
 
     text = ""
@@ -123,17 +115,19 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for r in rows:
         text += f"{r[0]} | @{r[1]} | {r[2]}\n"
 
+    if text == "":
+        text = "No users."
+
     await q.message.reply_text(text)
 
+# ---------------- EXPIRY DASHBOARD ----------------
 
-# EXPIRY DASHBOARD
 async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
     await q.answer()
 
     cur.execute("SELECT * FROM users")
-
     rows = cur.fetchall()
 
     text = ""
@@ -146,10 +140,13 @@ Expiry: {r[4]}
 
 """
 
+    if text == "":
+        text = "No active users."
+
     await q.message.reply_text(text)
 
+# ---------------- PAYMENT INFO ----------------
 
-# PAYMENT INFO
 async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
@@ -166,12 +163,14 @@ async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 async def send_ss(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     q = update.callback_query
     await q.answer()
-    await q.message.reply_text("📸 Please send payment screenshot.")
 
+    await q.message.reply_text(
+        "📸 Please send payment screenshot.\n\n⏳ Your request will be sent to admin for approval."
+    )
 
 async def send_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -182,11 +181,11 @@ async def send_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(
         ADMIN_ID,
-        f"User ID: {user.id}\nUsername: @{user.username}"
+        f"🆔 USER INFO\n\nUsername: @{user.username}\nUser ID: {user.id}"
     )
 
+# ---------------- PLANS ----------------
 
-# PLANS
 async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
@@ -203,15 +202,14 @@ async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- PLAN DETAIL ----------------
 
-# PLAN DETAIL
 async def plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
     await q.answer()
 
     key = q.data.split("_")[1]
-
     plan = PLANS[key]
 
     context.user_data["plan"] = key
@@ -232,8 +230,8 @@ f"""
 reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ---------------- MY SUB ----------------
 
-# MY SUB
 async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
@@ -256,8 +254,8 @@ f"""
 """
     )
 
+# ---------------- SCREENSHOT ----------------
 
-# SCREENSHOT
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
@@ -270,7 +268,6 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "INSERT INTO pending VALUES (?,?,?)",
         (user.id, username, plan)
     )
-
     conn.commit()
 
     keyboard = [[
@@ -281,12 +278,22 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_photo(
         ADMIN_ID,
         photo,
-        caption=f"User @{username}\nID {user.id}\nPlan {plan}",
+        caption=f"""
+💰 Payment Request
+
+👤 Username: @{username}
+🆔 User ID: {user.id}
+📦 Plan: {plan}
+""",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+    await update.message.reply_text(
+        "✅ Screenshot received.\n\n⏳ Please wait for admin approval."
+    )
 
-# APPROVE
+# ---------------- APPROVE ----------------
+
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
@@ -299,18 +306,13 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     join = datetime.now()
     expiry = join + timedelta(days=30)
 
-    cur.execute(
-        "SELECT username FROM pending WHERE user_id=?",
-        (uid,)
-    )
-
+    cur.execute("SELECT username FROM pending WHERE user_id=?", (uid,))
     uname = cur.fetchone()[0]
 
     cur.execute(
         "INSERT INTO users VALUES (?,?,?,?,?)",
         (uid, uname, plan, join.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d"))
     )
-
     conn.commit()
 
     invite = await context.bot.create_chat_invite_link(
@@ -323,18 +325,30 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 f"""
 🎉 Subscription Activated
 
-Plan: {plan}
-Expiry: {expiry}
+📦 Plan: {plan}
+📅 Join: {join.strftime("%Y-%m-%d")}
+⏳ Expiry: {expiry.strftime("%Y-%m-%d")}
 
-Join VIP Channel:
+🔗 Join VIP Channel
 {invite.invite_link}
 """
     )
 
-    await q.edit_message_caption("✅ Approved")
+    await q.edit_message_caption(
+f"""
+✅ Payment Approved
 
+👤 Username: @{uname}
+🆔 User ID: {uid}
 
-# REJECT
+📦 Plan: {plan}
+📅 Join: {join.strftime("%Y-%m-%d")}
+⏳ Expiry: {expiry.strftime("%Y-%m-%d")}
+"""
+)
+
+# ---------------- REJECT ----------------
+
 async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     q = update.callback_query
@@ -344,14 +358,13 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(uid, "❌ Payment Rejected")
 
+# ---------------- AUTO EXPIRY ----------------
 
-# AUTO EXPIRY
 async def expiry_checker(app):
 
     while True:
 
         cur.execute("SELECT * FROM users")
-
         rows = cur.fetchall()
 
         now = datetime.now()
@@ -375,6 +388,7 @@ async def expiry_checker(app):
 
         await asyncio.sleep(3600)
 
+# ---------------- MAIN ----------------
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
