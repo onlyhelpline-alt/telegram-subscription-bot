@@ -97,6 +97,64 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# TOTAL USERS
+async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT COUNT(*) FROM users")
+
+    total = cur.fetchone()[0]
+
+    await q.message.reply_text(f"👥 Total Users: {total}")
+
+
+# USER LIST
+async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+
+    rows = cur.fetchall()
+
+    text = ""
+
+    for r in rows:
+        text += f"{r[0]} | @{r[1]} | {r[2]}\n"
+
+    await q.message.reply_text(text)
+
+
+# EXPIRY DASHBOARD
+async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+
+    rows = cur.fetchall()
+
+    text = ""
+
+    for r in rows:
+
+        text += f"""{r[0]} | @{r[1]} | {r[2]}
+Join: {r[3]}
+Expiry: {r[4]}
+
+"""
+
+    await q.message.reply_text(text)
+
+
+# PAYMENT INFO
+async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+
 # PAYMENT INFO
 async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
