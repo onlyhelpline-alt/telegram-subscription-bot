@@ -88,62 +88,115 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ---------------- TOTAL USERS ----------------
+# ---------------- ADMIN COMMANDS ----------------
 
-async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    q = update.callback_query
-    await q.answer()
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-    cur.execute("SELECT COUNT(*) FROM users")
-    total = cur.fetchone()[0]
+    try:
+        uid = int(context.args[0])
+        plan = context.args[1]
+        days = int(context.args[2])
+    except:
+        await update.message.reply_text(
+            "Usage:\n/adduser USER_ID PLAN DAYS\nExample:\n/adduser 123456789 nitish 30"
+        )
+        return
 
-    await q.message.reply_text(f"👥 Total Users: {total}")
+    join = datetime.now()
+    expiry = join + timedelta(days=days)
 
-# ---------------- USER LIST ----------------
+    cur.execute(
+        "INSERT INTO users VALUES (?,?,?,?,?)",
+        (uid, "manual", plan, join.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d"))
+    )
+    conn.commit()
 
-async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"✅ User Added\nUser ID: {uid}\nPlan: {plan}\nExpiry: {expiry.strftime('%Y-%m-%d')}"
+    )
 
-    q = update.callback_query
-    await q.answer()
+async def removeuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    cur.execute("SELECT * FROM users")
-    rows = cur.fetchall()
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-    text = ""
+    try:
+        uid = int(context.args[0])
+    except:
+        await update.message.reply_text(
+            "Usage:\n/removeuser USER_ID\nExample:\n/removeuser 123456789"
+        )
+        return
 
-    for r in rows:
-        text += f"{r[0]} | @{r[1]} | {r[2]}\n"
+    cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
+    conn.commit()
 
-    if text == "":
-        text = "No users."
+    try:
+        await context.bot.ban_chat_member(VIP_CHANNEL, uid)
+        await context.bot.unban_chat_member(VIP_CHANNEL, uid)
+    except:
+        pass
 
-    await q.message.reply_text(text)
+    await update.message.reply_text("✅ User removed")
 
-# ---------------- EXPIRY DASHBOARD ----------------
+async def extend(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-    q = update.callback_query
-    await q.answer()
+    try:
+        uid = int(context.args[0])
+        days = int(context.args[1])
+    except:
+        await update.message.reply_text(
+            "Usage:\n/extend USER_ID DAYS\nExample:\n/extend 123456789 10"
+        )
+        return
 
-    cur.execute("SELECT * FROM users")
-    rows = cur.fetchall()
+    cur.execute("SELECT expiry FROM users WHERE user_id=?", (uid,))
+    r = cur.fetchone()
 
-    text = ""
+    if not r:
+        await update.message.reply_text("User not found")
+        return
 
-    for r in rows:
+    old_exp = datetime.strptime(r[0], "%Y-%m-%d")
+    new_exp = old_exp + timedelta(days=days)
 
-        text += f"""{r[0]} | @{r[1]} | {r[2]}
-Join: {r[3]}
-Expiry: {r[4]}
+    cur.execute(
+        "UPDATE users SET expiry=? WHERE user_id=?",
+        (new_exp.strftime("%Y-%m-%d"), uid)
+    )
+    conn.commit()
 
-"""
+    await update.message.reply_text(
+        f"⏳ Expiry extended\nNew expiry: {new_exp.strftime('%Y-%m-%d')}"
+    )
 
-    if text == "":
-        text = "No active users."
+async def setexpiry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await q.message.reply_text(text)
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    try:
+        uid = int(context.args[0])
+        new_exp = context.args[1]
+    except:
+        await update.message.reply_text(
+            "Usage:\n/setexpiry USER_ID YYYY-MM-DD\nExample:\n/setexpiry 123456789 2026-05-01"
+        )
+        return
+
+    cur.execute(
+        "UPDATE users SET expiry=? WHERE user_id=?",
+        (new_exp, uid)
+    )
+    conn.commit()
+
+    await update.message.reply_text(f"📅 Expiry updated to {new_exp}")
 
 # ---------------- PAYMENT INFO ----------------
 
@@ -230,30 +283,6 @@ f"""
 reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ---------------- MY SUB ----------------
-
-async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    q = update.callback_query
-    await q.answer()
-
-    uid = q.from_user.id
-
-    cur.execute("SELECT * FROM users WHERE user_id=?", (uid,))
-    r = cur.fetchone()
-
-    if not r:
-        await q.message.reply_text("❌ No active subscription")
-        return
-
-    await q.message.reply_text(
-f"""
-📦 Plan: {r[2]}
-📅 Join: {r[3]}
-⏳ Expiry: {r[4]}
-"""
-    )
-
 # ---------------- SCREENSHOT ----------------
 
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -334,18 +363,7 @@ f"""
 """
     )
 
-    await q.edit_message_caption(
-f"""
-✅ Payment Approved
-
-👤 Username: @{uname}
-🆔 User ID: {uid}
-
-📦 Plan: {plan}
-📅 Join: {join.strftime("%Y-%m-%d")}
-⏳ Expiry: {expiry.strftime("%Y-%m-%d")}
-"""
-)
+    await q.edit_message_caption("✅ Payment Approved")
 
 # ---------------- REJECT ----------------
 
@@ -394,6 +412,11 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("admin", admin))
+
+app.add_handler(CommandHandler("adduser", adduser))
+app.add_handler(CommandHandler("removeuser", removeuser))
+app.add_handler(CommandHandler("extend", extend))
+app.add_handler(CommandHandler("setexpiry", setexpiry))
 
 app.add_handler(CallbackQueryHandler(plans, pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail, pattern="plan_"))
