@@ -58,6 +58,78 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ADMIN PANEL
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("👥 Total Users", callback_data="total_users")],
+        [InlineKeyboardButton("📋 User List", callback_data="user_list")],
+        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expiry_dash")]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ ADMIN PANEL",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# TOTAL USERS
+async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT COUNT(*) FROM users")
+    total = cur.fetchone()[0]
+
+    await q.message.reply_text(f"👥 Total Users: {total}")
+
+
+# USER LIST
+async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    if not rows:
+        await q.message.reply_text("No users found")
+        return
+
+    text = ""
+
+    for r in rows:
+        text += f"👤 @{r[1]}\n🆔 {r[0]}\n📦 {r[2]}\n\n"
+
+    await q.message.reply_text(text)
+
+
+# EXPIRY DASHBOARD
+async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+
+    if not rows:
+        await q.message.reply_text("No users")
+        return
+
+    text = ""
+
+    for r in rows:
+        text += f"👤 @{r[1]}\n🆔 {r[0]}\n📦 {r[2]}\n📅 Join: {r[3]}\n⏳ Expiry: {r[4]}\n\n"
+
+    await q.message.reply_text(text)
+
+
 # MY SUB
 async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -217,109 +289,24 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_caption("✅ Approved")
 
 
-# ADMIN COMMANDS
-async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# REJECT
+async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    if update.effective_user.id != ADMIN_ID:
-        return
+    q = update.callback_query
+    await q.answer()
 
-    uid = int(context.args[0])
-    days = int(context.args[1])
+    uid = int(q.data.split("_")[1])
 
-    join = datetime.now()
-    expiry = join + timedelta(days=days)
+    await context.bot.send_message(uid, "❌ Payment Rejected")
 
-    cur.execute(
-        "INSERT INTO users VALUES (?,?,?,?,?)",
-        (uid, "manual", "manual", join.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d"))
-    )
-    conn.commit()
-
-    await update.message.reply_text("✅ User added")
-
-
-async def removeuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    uid = int(context.args[0])
-
-    cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
-    conn.commit()
-
-    await update.message.reply_text("❌ User removed")
-
-
-async def setexpiry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    uid = int(context.args[0])
-    days = int(context.args[1])
-
-    expiry = datetime.now() + timedelta(days=days)
-
-    cur.execute(
-        "UPDATE users SET expiry=? WHERE user_id=?",
-        (expiry.strftime("%Y-%m-%d"), uid)
-    )
-    conn.commit()
-
-    await update.message.reply_text("✅ Expiry updated")
-
-
-# EXPIRY CHECKER
-async def expiry_checker(app):
-
-    while True:
-
-        cur.execute("SELECT * FROM users")
-        rows = cur.fetchall()
-
-        now = datetime.now()
-
-        for r in rows:
-
-            uid = r[0]
-            exp = datetime.strptime(r[4], "%Y-%m-%d")
-
-            remaining = exp - now
-
-            if timedelta(hours=23) < remaining < timedelta(hours=24):
-
-                keyboard = [[
-                    InlineKeyboardButton("🔄 Renew Now", url=ADMIN_CONTACT)
-                ]]
-
-                try:
-                    await app.bot.send_message(
-                        uid,
-                        "⚠️ Your subscription will expire in 24 hours.\nRenew now to continue access.",
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-                except:
-                    pass
-
-            if now > exp:
-
-                try:
-                    await app.bot.ban_chat_member(VIP_CHANNEL, uid)
-                    await app.bot.unban_chat_member(VIP_CHANNEL, uid)
-                except:
-                    pass
-
-                cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
-                conn.commit()
-
-        await asyncio.sleep(3600)
+    await q.edit_message_caption("❌ Payment Rejected")
 
 
 # MAIN
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", admin))
 app.add_handler(CommandHandler("adduser", adduser))
 app.add_handler(CommandHandler("removeuser", removeuser))
 app.add_handler(CommandHandler("setexpiry", setexpiry))
@@ -330,15 +317,13 @@ app.add_handler(CallbackQueryHandler(payment, pattern="payment"))
 app.add_handler(CallbackQueryHandler(send_ss, pattern="send_ss"))
 app.add_handler(CallbackQueryHandler(send_id, pattern="send_id"))
 app.add_handler(CallbackQueryHandler(mysub, pattern="mysub"))
+app.add_handler(CallbackQueryHandler(total_users, pattern="total_users"))
+app.add_handler(CallbackQueryHandler(user_list, pattern="user_list"))
+app.add_handler(CallbackQueryHandler(expiry_dash, pattern="expiry_dash"))
 app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
 
 app.add_handler(MessageHandler(filters.PHOTO, screenshot))
-
-async def post_init(app):
-    asyncio.create_task(expiry_checker(app))
-
-app.post_init = post_init
 
 print("BOT RUNNING")
 
