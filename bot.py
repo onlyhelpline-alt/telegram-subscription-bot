@@ -88,6 +88,16 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    q = update.callback_query
+    await q.answer()
+
+    cur.execute("SELECT COUNT(*) FROM users")
+    total = cur.fetchone()[0]
+
+    await q.message.reply_text(f"👥 Total Users: {total}")
+
 # ---------------- ADMIN COMMANDS ----------------
 
 async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
