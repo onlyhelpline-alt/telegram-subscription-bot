@@ -86,9 +86,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("👥 Total Users", callback_data="total_users")],
         [InlineKeyboardButton("📋 User List", callback_data="user_list")],
-        [InlineKeyboardButton("⏳ Pending Payments", callback_data="pending")],
-        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expiry_dash")],
-        [InlineKeyboardButton("💰 Payment History", callback_data="pay_history")]
+        [InlineKeyboardButton("📊 Expiry Dashboard", callback_data="expiry_dash")]
     ]
 
     await update.message.reply_text(
@@ -149,10 +147,6 @@ Expiry: {r[4]}
 """
 
     await q.message.reply_text(text)
-
-
-# PAYMENT INFO
-async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # PAYMENT INFO
@@ -251,7 +245,6 @@ async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = cur.fetchone()
 
     if not r:
-
         await q.message.reply_text("❌ No active subscription")
         return
 
@@ -276,11 +269,6 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute(
         "INSERT INTO pending VALUES (?,?,?)",
         (user.id, username, plan)
-    )
-
-    cur.execute(
-        "INSERT INTO payments VALUES (?,?,?)",
-        (user.id, plan, str(datetime.now()))
     )
 
     conn.commit()
@@ -377,10 +365,8 @@ async def expiry_checker(app):
                 uid = r[0]
 
                 try:
-
                     await app.bot.ban_chat_member(VIP_CHANNEL, uid)
                     await app.bot.unban_chat_member(VIP_CHANNEL, uid)
-
                 except:
                     pass
 
