@@ -42,7 +42,6 @@ expiry TEXT
 """)
 conn.commit()
 
-
 # START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -56,7 +55,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔥 Welcome to VIP Subscription Bot",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 # ADMIN PANEL
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +73,6 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 # TOTAL USERS
 async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -87,7 +84,6 @@ async def total_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.message.reply_text(f"👥 Total Users: {total}")
 
-
 # USER LIST
 async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -97,17 +93,12 @@ async def user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT * FROM users")
     rows = cur.fetchall()
 
-    if not rows:
-        await q.message.reply_text("No users found")
-        return
-
     text = ""
 
     for r in rows:
         text += f"👤 @{r[1]}\n🆔 {r[0]}\n📦 {r[2]}\n\n"
 
-    await q.message.reply_text(text)
-
+    await q.message.reply_text(text if text else "No users")
 
 # EXPIRY DASHBOARD
 async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,17 +109,12 @@ async def expiry_dash(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT * FROM users")
     rows = cur.fetchall()
 
-    if not rows:
-        await q.message.reply_text("No users")
-        return
-
     text = ""
 
     for r in rows:
         text += f"👤 @{r[1]}\n🆔 {r[0]}\n📦 {r[2]}\n📅 Join: {r[3]}\n⏳ Expiry: {r[4]}\n\n"
 
-    await q.message.reply_text(text)
-
+    await q.message.reply_text(text if text else "No users")
 
 # MY SUB
 async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -149,7 +135,6 @@ async def mysub(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📦 Plan: {r[2]}\n📅 Join: {r[3]}\n⏳ Expiry: {r[4]}"
     )
 
-
 # PLANS
 async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -166,7 +151,6 @@ async def plans(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💎 Choose Plan",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 # PLAN DETAIL
 async def plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -190,7 +174,6 @@ async def plan_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 # PAYMENT
 async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -208,27 +191,19 @@ async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
 async def send_ss(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     q = update.callback_query
     await q.answer()
-
     await q.message.reply_text("📸 Please send payment screenshot.")
 
-
 async def send_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     q = update.callback_query
     await q.answer()
-
     user = q.from_user
-
     await context.bot.send_message(
         ADMIN_ID,
         f"👤 @{user.username}\n🆔 {user.id}"
     )
-
 
 # SCREENSHOT
 async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,7 +227,6 @@ async def screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text("✅ Screenshot received. Admin approval ka wait kare.")
-
 
 # APPROVE
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,7 +262,6 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.edit_message_caption("✅ Approved")
 
-
 # REJECT
 async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -301,6 +274,98 @@ async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await q.edit_message_caption("❌ Payment Rejected")
 
+# ADMIN COMMANDS
+async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    uid = int(context.args[0])
+    days = int(context.args[1])
+
+    join = datetime.now()
+    expiry = join + timedelta(days=days)
+
+    cur.execute(
+        "INSERT INTO users VALUES (?,?,?,?,?)",
+        (uid, "manual", "manual", join.strftime("%Y-%m-%d"), expiry.strftime("%Y-%m-%d"))
+    )
+    conn.commit()
+
+    await update.message.reply_text("✅ User added")
+
+async def removeuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    uid = int(context.args[0])
+
+    cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
+    conn.commit()
+
+    await update.message.reply_text("❌ User removed")
+
+async def setexpiry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    uid = int(context.args[0])
+    days = int(context.args[1])
+
+    expiry = datetime.now() + timedelta(days=days)
+
+    cur.execute(
+        "UPDATE users SET expiry=? WHERE user_id=?",
+        (expiry.strftime("%Y-%m-%d"), uid)
+    )
+    conn.commit()
+
+    await update.message.reply_text("✅ Expiry updated")
+
+# EXPIRY CHECKER
+async def expiry_checker(app):
+
+    while True:
+
+        cur.execute("SELECT * FROM users")
+        rows = cur.fetchall()
+
+        now = datetime.now()
+
+        for r in rows:
+
+            uid = r[0]
+            exp = datetime.strptime(r[4], "%Y-%m-%d")
+
+            remaining = exp - now
+
+            if timedelta(hours=23) < remaining < timedelta(hours=24):
+
+                keyboard = [[InlineKeyboardButton("🔄 Renew Now", url=ADMIN_CONTACT)]]
+
+                try:
+                    await app.bot.send_message(
+                        uid,
+                        "⚠️ Your subscription will expire in 24 hours.\nRenew now to continue access.",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                except:
+                    pass
+
+            if now > exp:
+
+                try:
+                    await app.bot.ban_chat_member(VIP_CHANNEL, uid)
+                    await app.bot.unban_chat_member(VIP_CHANNEL, uid)
+                except:
+                    pass
+
+                cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
+                conn.commit()
+
+        await asyncio.sleep(3600)
 
 # MAIN
 app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -324,6 +389,11 @@ app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
 
 app.add_handler(MessageHandler(filters.PHOTO, screenshot))
+
+async def post_init(app):
+    asyncio.create_task(expiry_checker(app))
+
+app.post_init = post_init
 
 print("BOT RUNNING")
 
