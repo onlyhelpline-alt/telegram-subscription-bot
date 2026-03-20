@@ -44,7 +44,6 @@ def init_db():
     conn.commit()
 
 
-# ================= PLAN =================
 def add_plan(name, mentor, price, validity, demo, channel):
     cursor.execute(
         "INSERT INTO plans (name, mentor, price, validity, demo_link, channel_id) VALUES (%s,%s,%s,%s,%s,%s)",
@@ -56,29 +55,24 @@ def get_plans():
     cursor.execute("SELECT * FROM plans WHERE active=1")
     return cursor.fetchall()
 
-def get_plan(plan_id):
-    cursor.execute("SELECT * FROM plans WHERE id=%s", (plan_id,))
+def get_plan(pid):
+    cursor.execute("SELECT * FROM plans WHERE id=%s", (pid,))
     return cursor.fetchone()
 
-def delete_plan(plan_id):
-    cursor.execute("UPDATE plans SET active=0 WHERE id=%s", (plan_id,))
-    conn.commit()
-
-def update_plan(plan_id, field, value):
-    cursor.execute(f"UPDATE plans SET {field}=%s WHERE id=%s", (value, plan_id))
+def delete_plan(pid):
+    cursor.execute("UPDATE plans SET active=0 WHERE id=%s", (pid,))
     conn.commit()
 
 
-# ================= USER =================
-def add_user(user_id, username, name, plan_id, join, expiry, purchase):
+def add_user(uid, username, name, pid, join, expiry, purchase):
     cursor.execute(
         "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s,%s)",
-        (user_id, username, name, plan_id, join, expiry, purchase)
+        (uid, username, name, pid, join, expiry, purchase)
     )
     conn.commit()
 
-def remove_user(user_id):
-    cursor.execute("DELETE FROM users WHERE user_id=%s", (user_id,))
+def remove_user(uid):
+    cursor.execute("DELETE FROM users WHERE user_id=%s", (uid,))
     conn.commit()
 
 def get_users():
@@ -86,28 +80,14 @@ def get_users():
     return cursor.fetchall()
 
 
-# ================= PAYMENT =================
-def add_payment(user_id, plan_id, amount):
+def add_payment(uid, pid, amount):
     date = datetime.now().strftime("%Y-%m-%d")
     cursor.execute(
         "INSERT INTO payments (user_id, plan_id, amount, date) VALUES (%s,%s,%s,%s)",
-        (user_id, plan_id, amount, date)
+        (uid, pid, amount, date)
     )
     conn.commit()
 
 def total_revenue():
     cursor.execute("SELECT COALESCE(SUM(amount),0) FROM payments")
     return cursor.fetchone()[0]
-
-def plan_wise():
-    cursor.execute("""
-    SELECT plans.name, SUM(payments.amount)
-    FROM payments
-    JOIN plans ON payments.plan_id = plans.id
-    GROUP BY plans.name
-    """)
-    return cursor.fetchall()
-
-def daily_sales():
-    cursor.execute("SELECT date, SUM(amount) FROM payments GROUP BY date")
-    return cursor.fetchall()
