@@ -7,10 +7,11 @@ conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
 
+# ================= INIT =================
 def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT,
+        user_id BIGINT PRIMARY KEY,
         username TEXT,
         plan TEXT,
         price INT,
@@ -29,15 +30,23 @@ def init_db():
         channel_id BIGINT
     )
     """)
+
     conn.commit()
 
 
 # ================= USERS =================
 def add_user(uid, username, plan, price, join, exp):
-    cur.execute(
-        "INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
-        (uid, username, plan, price, join, exp)
-    )
+    cur.execute("""
+    INSERT INTO users (user_id, username, plan, price, join_date, expiry)
+    VALUES (%s,%s,%s,%s,%s,%s)
+    ON CONFLICT (user_id) DO UPDATE SET
+        username = EXCLUDED.username,
+        plan = EXCLUDED.plan,
+        price = EXCLUDED.price,
+        join_date = EXCLUDED.join_date,
+        expiry = EXCLUDED.expiry
+    """, (uid, username, plan, price, join, exp))
+
     conn.commit()
 
 
@@ -52,18 +61,18 @@ def remove_user(uid):
 
 
 # ================= PLANS =================
-def add_plan(key, name, price, days, demo, channel):
+def add_plan_db(key, name, price, days, demo, channel):
     cur.execute("""
     INSERT INTO plans (plan_key, name, price, validity, demo_link, channel_id)
     VALUES (%s,%s,%s,%s,%s,%s)
-    ON CONFLICT (plan_key)
-    DO UPDATE SET
+    ON CONFLICT (plan_key) DO UPDATE SET
         name = EXCLUDED.name,
         price = EXCLUDED.price,
         validity = EXCLUDED.validity,
         demo_link = EXCLUDED.demo_link,
         channel_id = EXCLUDED.channel_id
     """, (key, name, price, days, demo, channel))
+
     conn.commit()
 
 
@@ -77,6 +86,13 @@ def get_plan(key):
     return cur.fetchone()
 
 
-def delete_plan(key):
+def update_plan(key, price, days):
+    cur.execute("""
+    UPDATE plans SET price=%s, validity=%s WHERE plan_key=%s
+    """, (price, days, key))
+    conn.commit()
+
+
+def delete_plan_db(key):
     cur.execute("DELETE FROM plans WHERE plan_key=%s", (key,))
     conn.commit()
