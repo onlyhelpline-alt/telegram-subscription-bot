@@ -7,6 +7,7 @@ from database import *
 
 init_db()
 
+
 # ================= START =================
 async def start(update: Update, context):
     kb = [
@@ -36,8 +37,8 @@ async def plan_detail(update, context):
     await q.answer()
 
     key = q.data.split("_")[1]
-
     plan = get_plan(key)
+
     if not plan:
         await q.message.reply_text("❌ Plan not found")
         return
@@ -52,7 +53,10 @@ async def plan_detail(update, context):
         [InlineKeyboardButton("📞 Contact", url=f"https://t.me/{ADMIN_USERNAME}")]
     ]
 
-    await q.message.reply_text(f"{name}\n₹{price}\n{validity} Days", reply_markup=InlineKeyboardMarkup(kb))
+    await q.message.reply_text(
+        f"📦 {name}\n💰 ₹{price}\n⏳ {validity} Days",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
 # ================= PAYMENT =================
@@ -90,7 +94,11 @@ async def send_id(update, context):
 
     name, price = plan[1], plan[2]
 
-    await context.bot.send_message(ADMIN_ID, f"{user.id} | {name} | ₹{price}")
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"{user.id} | {name} | ₹{price}"
+    )
+
     await q.message.reply_text("✅ Sent to admin")
 
 
@@ -142,12 +150,25 @@ async def approve(update, context):
 
     user = await context.bot.get_chat(uid)
 
-    add_user(uid, user.username or "NoUser", name, price,
-             now.strftime("%Y-%m-%d"), exp.strftime("%Y-%m-%d"))
+    add_user(
+        uid,
+        user.username or "NoUser",
+        name,
+        price,
+        now.strftime("%Y-%m-%d"),
+        exp.strftime("%Y-%m-%d")
+    )
 
-    link = await context.bot.create_chat_invite_link(chat_id=channel, member_limit=1)
+    link = await context.bot.create_chat_invite_link(
+        chat_id=channel,
+        member_limit=1
+    )
 
-    await context.bot.send_message(uid, f"🎉 Approved\n{link.invite_link}")
+    await context.bot.send_message(
+        uid,
+        f"🎉 Approved!\n\n📦 {name}\n⏳ {validity} Days\n\n🔗 {link.invite_link}"
+    )
+
     await q.edit_message_reply_markup(None)
 
 
@@ -155,7 +176,9 @@ async def approve(update, context):
 async def reject(update, context):
     q = update.callback_query
     await q.answer()
+
     uid = int(q.data.split("_")[1])
+
     await context.bot.send_message(uid, "❌ Rejected")
     await q.edit_message_reply_markup(None)
 
@@ -253,20 +276,32 @@ async def handle_text(update, context):
 
     if context.user_data.get("add"):
         key, name, price, days, demo, channel = txt.split(",")
-        add_plan(key, name, int(price), int(days), demo, int(channel))
+
+        add_plan_db(key, name, int(price), int(days), demo, int(channel))
+
         await update.message.reply_text("✅ Added")
         context.user_data.clear()
 
     elif context.user_data.get("edit"):
         key, price, days = txt.split(",")
+
         plan = get_plan(key)
         if plan:
-            add_plan(key, plan[1], int(price), int(days), plan[4], plan[5])
+            add_plan_db(
+                key,
+                plan[1],
+                int(price),
+                int(days),
+                plan[4],
+                plan[5]
+            )
+
         await update.message.reply_text("✏️ Updated")
         context.user_data.clear()
 
     elif context.user_data.get("delete"):
-        delete_plan(txt.strip())
+        delete_plan_db(txt.strip())
+
         await update.message.reply_text("❌ Deleted")
         context.user_data.clear()
 
@@ -276,9 +311,8 @@ async def expiry(context):
     for u in get_users():
         uid = u[0]
         exp = datetime.strptime(u[5], "%Y-%m-%d")
-        now = datetime.now()
 
-        if now > exp:
+        if datetime.now() > exp:
             remove_user(uid)
 
 
