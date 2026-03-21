@@ -36,7 +36,7 @@ async def plan_detail(update, context):
     q = update.callback_query
     await q.answer()
 
-    key = q.data.split("_")[1]
+    key = q.data.replace("plan_", "")
     plan = get_plan(key)
 
     if not plan:
