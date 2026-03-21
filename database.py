@@ -1,87 +1,74 @@
-import sqlite3
+import psycopg2
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+
 
 def init_db():
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS users(
-        user_id INTEGER,
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id BIGINT,
         username TEXT,
         plan TEXT,
-        price INTEGER,
+        price INT,
         join_date TEXT,
         expiry TEXT
-    )""")
+    )
+    """)
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS plans(
-        key TEXT PRIMARY KEY,
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS plans (
+        plan_key TEXT PRIMARY KEY,
         name TEXT,
-        price INTEGER,
-        validity INTEGER,
-        demo TEXT,
-        channel INTEGER
-    )""")
-
+        price INT,
+        validity INT,
+        demo_link TEXT,
+        channel_id BIGINT
+    )
+    """)
     conn.commit()
-    conn.close()
 
 
-def add_user(uid, username, plan, price, join, expiry):
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("INSERT INTO users VALUES (?,?,?,?,?,?)",
-                (uid, username, plan, price, join, expiry))
+# ================= USERS =================
+def add_user(uid, username, plan, price, join, exp):
+    cur.execute("INSERT INTO users VALUES (%s,%s,%s,%s,%s,%s)",
+                (uid, username, plan, price, join, exp))
     conn.commit()
-    conn.close()
 
 
 def get_users():
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
     cur.execute("SELECT * FROM users")
-    data = cur.fetchall()
-    conn.close()
-    return data
+    return cur.fetchall()
 
 
 def remove_user(uid):
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("DELETE FROM users WHERE user_id=?", (uid,))
+    cur.execute("DELETE FROM users WHERE user_id=%s", (uid,))
     conn.commit()
-    conn.close()
 
 
-def add_plan_db(key, name, price, days, demo, channel):
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO plans VALUES (?,?,?,?,?,?)",
-                (key, name, price, days, demo, channel))
+# ================= PLANS =================
+def add_plan(key, name, price, days, demo, channel):
+    cur.execute(
+        "INSERT INTO plans VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (plan_key) DO UPDATE SET name=%s,price=%s,validity=%s,demo_link=%s,channel_id=%s",
+        (key, name, price, days, demo, channel,
+         name, price, days, demo, channel)
+    )
     conn.commit()
-    conn.close()
 
 
 def get_plans():
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
     cur.execute("SELECT * FROM plans")
-    data = cur.fetchall()
-    conn.close()
-    return data
+    return cur.fetchall()
 
 
-def update_plan(key, price, days):
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("UPDATE plans SET price=?, validity=? WHERE key=?",
-                (price, days, key))
+def get_plan(key):
+    cur.execute("SELECT * FROM plans WHERE plan_key=%s", (key,))
+    return cur.fetchone()
+
+
+def delete_plan(key):
+    cur.execute("DELETE FROM plans WHERE plan_key=%s", (key,))
     conn.commit()
-    conn.close()
-
-
-def delete_plan_db(key):
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("DELETE FROM plans WHERE key=?", (key,))
-    conn.commit()
-    conn.close()
