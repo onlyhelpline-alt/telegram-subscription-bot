@@ -151,7 +151,7 @@ async def approve(update, context):
         return
 
     name, price, validity, _, channel = plan[1], plan[2], plan[3], plan[4], plan[5]
-
+    await context.bot.send_message(chat_id=channel, text="TEST MESSAGE")
     now = datetime.now()
     exp = now + timedelta(days=validity)
 
