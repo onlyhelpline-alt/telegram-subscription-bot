@@ -37,9 +37,12 @@ async def plan_detail(update, context):
 
     key = q.data.split("_")[1]
 
-    for p in get_plans():
-        if p[0] == key:
-            name, price, validity, demo = p[1], p[2], p[3], p[4]
+    plan = get_plan(key)
+    if not plan:
+        await q.message.reply_text("❌ Plan not found")
+        return
+
+    name, price, validity, demo = plan[1], plan[2], plan[3], plan[4]
 
     context.user_data["plan"] = key
 
@@ -58,10 +61,9 @@ async def payinfo(update, context):
     await q.answer()
 
     key = context.user_data["plan"]
+    plan = get_plan(key)
 
-    for p in get_plans():
-        if p[0] == key:
-            name, price = p[1], p[2]
+    name, price = plan[1], plan[2]
 
     await context.bot.send_photo(
         chat_id=q.from_user.id,
@@ -84,10 +86,9 @@ async def send_id(update, context):
 
     user = q.from_user
     key = context.user_data["plan"]
+    plan = get_plan(key)
 
-    for p in get_plans():
-        if p[0] == key:
-            name, price = p[1], p[2]
+    name, price = plan[1], plan[2]
 
     await context.bot.send_message(ADMIN_ID, f"{user.id} | {name} | ₹{price}")
     await q.message.reply_text("✅ Sent to admin")
@@ -107,10 +108,9 @@ async def photo(update, context):
 
     user = update.message.from_user
     key = context.user_data["plan"]
+    plan = get_plan(key)
 
-    for p in get_plans():
-        if p[0] == key:
-            name, price, validity = p[1], p[2], p[3]
+    name, price = plan[1], plan[2]
 
     kb = [[
         InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user.id}_{key}"),
@@ -134,9 +134,8 @@ async def approve(update, context):
 
     uid, key = int(q.data.split("_")[1]), q.data.split("_")[2]
 
-    for p in get_plans():
-        if p[0] == key:
-            name, price, validity, _, channel = p[1], p[2], p[3], p[4], p[5]
+    plan = get_plan(key)
+    name, price, validity, _, channel = plan[1], plan[2], plan[3], plan[4], plan[5]
 
     now = datetime.now()
     exp = now + timedelta(days=validity)
@@ -254,36 +253,32 @@ async def handle_text(update, context):
 
     if context.user_data.get("add"):
         key, name, price, days, demo, channel = txt.split(",")
-        add_plan_db(key, name, int(price), int(days), demo, int(channel))
+        add_plan(key, name, int(price), int(days), demo, int(channel))
         await update.message.reply_text("✅ Added")
         context.user_data.clear()
 
     elif context.user_data.get("edit"):
         key, price, days = txt.split(",")
-        update_plan(key, int(price), int(days))
+        plan = get_plan(key)
+        if plan:
+            add_plan(key, plan[1], int(price), int(days), plan[4], plan[5])
         await update.message.reply_text("✏️ Updated")
         context.user_data.clear()
 
     elif context.user_data.get("delete"):
-        delete_plan_db(txt.strip())
+        delete_plan(txt.strip())
         await update.message.reply_text("❌ Deleted")
         context.user_data.clear()
 
 
-# ================= EXPIRY + REMINDER =================
+# ================= EXPIRY =================
 async def expiry(context):
     for u in get_users():
         uid = u[0]
         exp = datetime.strptime(u[5], "%Y-%m-%d")
         now = datetime.now()
 
-        # reminder
-        if exp - now <= timedelta(days=1) and exp > now:
-            await context.bot.send_message(uid, "⚠️ Expiring soon! Renew now")
-
         if now > exp:
-            await context.bot.ban_chat_member(VIP_CHANNEL_ID, uid)
-            await context.bot.unban_chat_member(VIP_CHANNEL_ID, uid)
             remove_user(uid)
 
 
