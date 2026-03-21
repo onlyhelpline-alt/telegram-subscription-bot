@@ -7,28 +7,34 @@ from database import *
 
 init_db()
 
-user_state = {}
+user_data_map = {}
 
-# ================= START (SAME UI) =================
+# ================= START =================
 async def start(update: Update, context):
     kb = [
-        [InlineKeyboardButton("💎 VIP Group List", callback_data="plans")],
-        [InlineKeyboardButton("📊 My Subscription", callback_data="my")],
-        [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_ID}")]
+        [InlineKeyboardButton("💎 Subscription Plans", callback_data="plans")],
+        [InlineKeyboardButton("📊 My Subscription", callback_data="mysub")],
+        [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]
     ]
-    await update.message.reply_text("🔥 Welcome", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text("🔥 Welcome to VIP Subscription Bot", reply_markup=InlineKeyboardMarkup(kb))
 
 
 # ================= PLANS =================
+PLANS = {
+    "nitish": ("Nitish Apex", 399, 30),
+    "stock": ("Stock Learner", 499, 30),
+    "trader": ("Trader Pro", 499, 30)
+}
+
 async def plans(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-    buttons = []
-    for p in get_plans():
-        buttons.append([InlineKeyboardButton(f"{p[1]} ₹{p[3]}", callback_data=f"plan_{p[0]}")])
+    kb = []
+    for key, val in PLANS.items():
+        kb.append([InlineKeyboardButton(f"{val[0]} ₹{val[1]}", callback_data=f"plan_{key}")])
 
-    await q.message.reply_text("💎 Choose Plan", reply_markup=InlineKeyboardMarkup(buttons))
+    await q.message.reply_text("💎 Choose Plan", reply_markup=InlineKeyboardMarkup(kb))
 
 
 # ================= PLAN DETAIL =================
@@ -36,168 +42,193 @@ async def plan_detail(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-    pid = int(q.data.split("_")[1])
-    p = get_plan(pid)
+    key = q.data.split("_")[1]
+    name, price, validity = PLANS[key]
 
-    text = f"""
-📦 {p[1]}
-👨‍🏫 Mentor: {p[2]}
-💰 Price: ₹{p[3]}
-⏳ Validity: {p[4]} days
-"""
+    context.user_data["plan"] = key
 
-    kb = [[InlineKeyboardButton("💰 Pay & Send Screenshot", callback_data=f"pay_{pid}")]]
-    await q.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    kb = [
+        [InlineKeyboardButton("💰 Payment Info", callback_data="payinfo")],
+        [InlineKeyboardButton("🎬 Demo", url="https://example.com")],
+        [InlineKeyboardButton("📞 Contact", url=f"https://t.me/{ADMIN_USERNAME}")]
+    ]
+
+    await q.message.reply_text(
+        f"📦 {name}\n💰 ₹{price}\n⏳ {validity} Days",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
-# ================= PAY =================
-async def pay(update: Update, context):
+# ================= PAYMENT INFO =================
+async def payinfo(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-    pid = int(q.data.split("_")[1])
-    user_state[q.from_user.id] = pid
+    key = context.user_data["plan"]
+    name, price, validity = PLANS[key]
 
-    await q.message.reply_text("📸 Send payment screenshot")
+    await context.bot.send_photo(
+        chat_id=q.from_user.id,
+        photo=open("qr.png", "rb"),
+        caption=f"""
+💰 Payment Info
+
+📦 Plan: {name}
+💵 Amount: ₹{price}
+
+UPI: {UPI_ID}
+"""
+    )
+
+    kb = [
+        [InlineKeyboardButton("📸 Send Screenshot", callback_data="send_ss")],
+        [InlineKeyboardButton("🆔 Send ID", callback_data="send_id")]
+    ]
+
+    await q.message.reply_text("Choose Option", reply_markup=InlineKeyboardMarkup(kb))
 
 
-# ================= SCREENSHOT =================
+# ================= SEND ID =================
+async def send_id(update: Update, context):
+    q = update.callback_query
+    await q.answer()
+
+    user = q.from_user
+    key = context.user_data["plan"]
+    name, price, _ = PLANS[key]
+
+    await context.bot.send_message(
+        ADMIN_ID,
+        f"""
+🆔 ID REQUEST
+
+👤 @{user.username}
+🆔 {user.id}
+📦 {name}
+💰 ₹{price}
+"""
+    )
+
+    await q.message.reply_text("✅ Your ID sent to admin")
+
+
+# ================= SEND SCREENSHOT =================
+async def send_ss(update: Update, context):
+    q = update.callback_query
+    await q.answer()
+
+    context.user_data["awaiting_ss"] = True
+    await q.message.reply_text("📸 Send your payment screenshot")
+
+
+# ================= HANDLE PHOTO =================
 async def photo(update: Update, context):
-    u = update.message.from_user
-
-    if u.id not in user_state:
+    if not context.user_data.get("awaiting_ss"):
         return
 
-    pid = user_state[u.id]
-    p = get_plan(pid)
+    user = update.message.from_user
+    key = context.user_data["plan"]
+    name, price, validity = PLANS[key]
+
+    kb = [
+        [
+            InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user.id}_{key}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user.id}")
+        ]
+    ]
 
     await context.bot.send_photo(
         ADMIN_ID,
         update.message.photo[-1].file_id,
         caption=f"""
-📩 Payment Request
+💰 Payment Screenshot
 
-👤 @{u.username}
-🆔 {u.id}
-📦 Plan: {p[1]}
-
-Approve:
-/approve {u.id} {pid}
-"""
+👤 @{user.username}
+🆔 {user.id}
+📦 {name}
+💰 ₹{price}
+⏳ {validity} Days
+""",
+        reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    await update.message.reply_text("✅ Sent to admin")
+    await update.message.reply_text("✅ Screenshot sent to admin, wait for approval")
 
 
 # ================= APPROVE =================
 async def approve(update: Update, context):
-    uid = int(context.args[0])
-    pid = int(context.args[1])
+    q = update.callback_query
+    await q.answer()
 
-    p = get_plan(pid)
+    data = q.data.split("_")
+    uid = int(data[1])
+    key = data[2]
+
+    name, price, validity = PLANS[key]
 
     now = datetime.now()
-    exp = now + timedelta(days=p[4])
+    exp = now + timedelta(days=validity)
 
-    add_user(uid, "", "", pid, now.strftime("%Y-%m-%d"), exp.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
-    add_payment(uid, pid, p[3])
+    add_user(uid, "", name, price, now.strftime("%Y-%m-%d"), exp.strftime("%Y-%m-%d"))
 
     link = await context.bot.create_chat_invite_link(
-        chat_id=int(p[6]),
+        chat_id=-1001234567890,  # अपना channel डाल
         member_limit=1
     )
 
-    await context.bot.send_message(uid, f"✅ Approved\nJoin: {link.invite_link}")
+    await context.bot.send_message(
+        uid,
+        f"""
+🎉 Congratulations!
+
+📦 Plan: {name}
+📅 Join: {now.date()}
+⏳ Expiry: {exp.date()}
+
+🔗 Join: {link.invite_link}
+"""
+    )
+
+    await q.edit_message_reply_markup(None)
 
 
-# ================= MY SUB =================
-async def my(update: Update, context):
+# ================= REJECT =================
+async def reject(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-    for u in get_users():
-        if u[0] == q.from_user.id:
-            p = get_plan(u[3])
-            await q.message.reply_text(f"""
-📦 Plan: {p[1]}
-⏳ Expiry: {u[5]}
-""")
-            return
+    uid = int(q.data.split("_")[1])
 
-    await q.message.reply_text("❌ No active subscription")
+    await context.bot.send_message(
+        uid,
+        "❌ Your payment was rejected. Contact admin."
+    )
 
-
-# ================= RENEW =================
-async def renew(update: Update, context):
-    q = update.callback_query
-    await q.answer()
-
-    pid = int(q.data.split("_")[1])
-    user_state[q.from_user.id] = pid
-
-    await q.message.reply_text("📸 Send screenshot to renew")
+    await q.edit_message_reply_markup(None)
 
 
 # ================= EXPIRY =================
 async def expiry(context):
     for u in get_users():
         uid = u[0]
-        pid = u[3]
         exp = datetime.strptime(u[5], "%Y-%m-%d")
         now = datetime.now()
 
-        p = get_plan(pid)
-
-        # Reminder
-        if exp - now <= timedelta(days=1) and exp > now:
-            kb = [[InlineKeyboardButton("🔄 Renew", callback_data=f"renew_{pid}")]]
-            await context.bot.send_message(uid, "⚠️ Expiring soon", reply_markup=InlineKeyboardMarkup(kb))
-
-            await context.bot.send_message(ADMIN_ID, f"User {uid} expiring soon")
-
-        # Expired
         if now > exp:
-            await context.bot.ban_chat_member(int(p[6]), uid)
-            await context.bot.unban_chat_member(int(p[6]), uid)
             remove_user(uid)
-
-
-# ================= ADMIN =================
-async def admin(update: Update, context):
-    await update.message.reply_text("""
-Admin Commands:
-/addplan name mentor price validity demo channel
-/deleteplan id
-""")
-
-
-# ================= ADD PLAN =================
-async def addplan(update: Update, context):
-    name, mentor, price, val, demo, ch = context.args
-    add_plan(name, mentor, int(price), int(val), demo, ch)
-    await update.message.reply_text("✅ Plan added")
-
-
-# ================= DELETE PLAN =================
-async def deleteplan(update: Update, context):
-    delete_plan(int(context.args[0]))
-    await update.message.reply_text("❌ Deleted")
 
 
 # ================= APP =================
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("admin", admin))
-app.add_handler(CommandHandler("approve", approve))
-app.add_handler(CommandHandler("addplan", addplan))
-app.add_handler(CommandHandler("deleteplan", deleteplan))
-
 app.add_handler(CallbackQueryHandler(plans, pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail, pattern="plan_"))
-app.add_handler(CallbackQueryHandler(pay, pattern="pay_"))
-app.add_handler(CallbackQueryHandler(my, pattern="my"))
-app.add_handler(CallbackQueryHandler(renew, pattern="renew_"))
+app.add_handler(CallbackQueryHandler(payinfo, pattern="payinfo"))
+app.add_handler(CallbackQueryHandler(send_id, pattern="send_id"))
+app.add_handler(CallbackQueryHandler(send_ss, pattern="send_ss"))
+app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
+app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
 
 app.add_handler(MessageHandler(filters.PHOTO, photo))
 
