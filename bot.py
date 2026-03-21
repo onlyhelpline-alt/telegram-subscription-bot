@@ -140,9 +140,16 @@ async def approve(update, context):
     q = update.callback_query
     await q.answer()
 
-    uid, key = int(q.data.split("_")[1]), q.data.split("_")[2]
+    data = q.data.replace("approve_", "")
+    uid, key = data.split("_", 1)
+    uid = int(uid)
 
     plan = get_plan(key)
+
+    if not plan:
+        await q.message.reply_text("❌ Plan not found (Approve)")
+        return
+
     name, price, validity, _, channel = plan[1], plan[2], plan[3], plan[4], plan[5]
 
     now = datetime.now()
