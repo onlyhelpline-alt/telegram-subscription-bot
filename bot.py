@@ -7,7 +7,11 @@ from database import *
 
 init_db()
 
-user_data_map = {}
+PLANS = {
+    "nitish": ("Nitish Apex", 399, 30),
+    "stock": ("Stock Learner", 499, 30),
+    "trader": ("Trader Pro", 499, 30)
+}
 
 # ================= START =================
 async def start(update: Update, context):
@@ -20,12 +24,6 @@ async def start(update: Update, context):
 
 
 # ================= PLANS =================
-PLANS = {
-    "nitish": ("Nitish Apex", 399, 30),
-    "stock": ("Stock Learner", 499, 30),
-    "trader": ("Trader Pro", 499, 30)
-}
-
 async def plans(update: Update, context):
     q = update.callback_query
     await q.answer()
@@ -59,7 +57,7 @@ async def plan_detail(update: Update, context):
     )
 
 
-# ================= PAYMENT INFO =================
+# ================= PAYMENT =================
 async def payinfo(update: Update, context):
     q = update.callback_query
     await q.answer()
@@ -70,14 +68,7 @@ async def payinfo(update: Update, context):
     await context.bot.send_photo(
         chat_id=q.from_user.id,
         photo=open("qr.png", "rb"),
-        caption=f"""
-💰 Payment Info
-
-📦 Plan: {name}
-💵 Amount: ₹{price}
-
-UPI: {UPI_ID}
-"""
+        caption=f"📦 {name}\n💰 ₹{price}\nUPI: {UPI_ID}"
     )
 
     kb = [
@@ -99,29 +90,20 @@ async def send_id(update: Update, context):
 
     await context.bot.send_message(
         ADMIN_ID,
-        f"""
-🆔 ID REQUEST
-
-👤 @{user.username}
-🆔 {user.id}
-📦 {name}
-💰 ₹{price}
-"""
+        f"👤 @{user.username}\n🆔 {user.id}\n📦 {name}\n💰 ₹{price}"
     )
 
-    await q.message.reply_text("✅ Your ID sent to admin")
+    await q.message.reply_text("✅ Sent to admin")
 
 
-# ================= SEND SCREENSHOT =================
+# ================= SCREENSHOT =================
 async def send_ss(update: Update, context):
     q = update.callback_query
     await q.answer()
-
     context.user_data["awaiting_ss"] = True
-    await q.message.reply_text("📸 Send your payment screenshot")
+    await q.message.reply_text("📸 Send screenshot")
 
 
-# ================= HANDLE PHOTO =================
 async def photo(update: Update, context):
     if not context.user_data.get("awaiting_ss"):
         return
@@ -130,29 +112,19 @@ async def photo(update: Update, context):
     key = context.user_data["plan"]
     name, price, validity = PLANS[key]
 
-    kb = [
-        [
-            InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user.id}_{key}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user.id}")
-        ]
-    ]
+    kb = [[
+        InlineKeyboardButton("✅ Approve", callback_data=f"approve_{user.id}_{key}"),
+        InlineKeyboardButton("❌ Reject", callback_data=f"reject_{user.id}")
+    ]]
 
     await context.bot.send_photo(
         ADMIN_ID,
         update.message.photo[-1].file_id,
-        caption=f"""
-💰 Payment Screenshot
-
-👤 @{user.username}
-🆔 {user.id}
-📦 {name}
-💰 ₹{price}
-⏳ {validity} Days
-""",
+        caption=f"{user.id} | {name} | ₹{price}",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    await update.message.reply_text("✅ Screenshot sent to admin, wait for approval")
+    await update.message.reply_text("✅ Sent to admin")
 
 
 # ================= APPROVE =================
@@ -160,10 +132,7 @@ async def approve(update: Update, context):
     q = update.callback_query
     await q.answer()
 
-    data = q.data.split("_")
-    uid = int(data[1])
-    key = data[2]
-
+    uid, key = int(q.data.split("_")[1]), q.data.split("_")[2]
     name, price, validity = PLANS[key]
 
     now = datetime.now()
@@ -171,33 +140,15 @@ async def approve(update: Update, context):
 
     user = await context.bot.get_chat(uid)
 
-    add_user(
-        uid,
-        user.username or "NoUsername",
-        name,
-        price,
-        now.strftime("%Y-%m-%d"),
-        exp.strftime("%Y-%m-%d")
-    )
+    add_user(uid, user.username or "NoUser", name, price,
+             now.strftime("%Y-%m-%d"), exp.strftime("%Y-%m-%d"))
 
     link = await context.bot.create_chat_invite_link(
         chat_id=VIP_CHANNEL_ID,
         member_limit=1
     )
 
-    await context.bot.send_message(
-        uid,
-        f"""
-🎉 Congratulations!
-
-📦 Plan: {name}
-📅 Join: {now.date()}
-⏳ Expiry: {exp.date()}
-
-🔗 Join: {link.invite_link}
-"""
-    )
-
+    await context.bot.send_message(uid, f"🎉 Approved\n{link.invite_link}")
     await q.edit_message_reply_markup(None)
 
 
@@ -205,14 +156,8 @@ async def approve(update: Update, context):
 async def reject(update: Update, context):
     q = update.callback_query
     await q.answer()
-
     uid = int(q.data.split("_")[1])
-
-    await context.bot.send_message(
-        uid,
-        "❌ Your payment was rejected. Contact admin."
-    )
-
+    await context.bot.send_message(uid, "❌ Rejected")
     await q.edit_message_reply_markup(None)
 
 
@@ -223,39 +168,108 @@ async def my(update: Update, context):
 
     for u in get_users():
         if u[0] == q.from_user.id:
-            await q.message.reply_text(f"""
-📦 Plan: {u[2]}
-💰 Price: ₹{u[3]}
-📅 Join: {u[4]}
-⏳ Expiry: {u[5]}
-""")
+            await q.message.reply_text(f"{u[2]} | Exp: {u[5]}")
             return
 
-    await q.message.reply_text("❌ No active subscription")
+    await q.message.reply_text("No subscription")
 
 
-# ================= ADMIN =================
+# ================= ADMIN PANEL =================
 async def admin(update: Update, context):
     if update.message.from_user.id != ADMIN_ID:
         return
 
-    await update.message.reply_text("""
-⚙️ ADMIN PANEL
+    kb = [
+        [InlineKeyboardButton("👥 Users", callback_data="total_users")],
+        [InlineKeyboardButton("💰 Revenue", callback_data="revenue")],
+        [InlineKeyboardButton("📅 Daily Report", callback_data="daily")],
+        [InlineKeyboardButton("✏️ Edit Plan", callback_data="edit_plan")],
+        [InlineKeyboardButton("❌ Delete Plan", callback_data="delete_plan")],
+        [InlineKeyboardButton("➕ Add Plan", callback_data="add_plan")]
+    ]
 
-Use:
-/approve user_id plan_key
-""")
+    await update.message.reply_text("⚙️ ADMIN PANEL", reply_markup=InlineKeyboardMarkup(kb))
+
+
+# ================= ADMIN FEATURES =================
+async def total_users(update, context):
+    q = update.callback_query
+    await q.answer()
+    await q.message.reply_text(f"Users: {len(get_users())}")
+
+
+async def revenue(update, context):
+    q = update.callback_query
+    await q.answer()
+    total = sum([u[3] for u in get_users()])
+    await q.message.reply_text(f"Total ₹{total}")
+
+
+async def daily(update, context):
+    q = update.callback_query
+    await q.answer()
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    total = sum([u[3] for u in get_users() if u[4] == today])
+
+    await q.message.reply_text(f"📅 Today Revenue: ₹{total}")
+
+
+# ================= EDIT PLAN =================
+async def edit_plan(update, context):
+    q = update.callback_query
+    await q.answer()
+
+    context.user_data["edit"] = True
+    await q.message.reply_text("Send: key,price,days")
+
+
+# ================= DELETE PLAN =================
+async def delete_plan(update, context):
+    q = update.callback_query
+    await q.answer()
+
+    context.user_data["delete"] = True
+    await q.message.reply_text("Send plan key to delete")
+
+
+# ================= ADD PLAN =================
+async def add_plan(update, context):
+    q = update.callback_query
+    await q.answer()
+
+    context.user_data["add"] = True
+    await q.message.reply_text("Send: key,name,price,days")
+
+
+# ================= TEXT HANDLER =================
+async def handle_text(update, context):
+    txt = update.message.text
+
+    if context.user_data.get("add"):
+        key, name, price, days = txt.split(",")
+        PLANS[key] = (name, int(price), int(days))
+        await update.message.reply_text("✅ Added")
+        context.user_data.clear()
+
+    elif context.user_data.get("edit"):
+        key, price, days = txt.split(",")
+        name = PLANS[key][0]
+        PLANS[key] = (name, int(price), int(days))
+        await update.message.reply_text("✏️ Updated")
+        context.user_data.clear()
+
+    elif context.user_data.get("delete"):
+        del PLANS[txt.strip()]
+        await update.message.reply_text("❌ Deleted")
+        context.user_data.clear()
 
 
 # ================= EXPIRY =================
 async def expiry(context):
     for u in get_users():
-        uid = u[0]
-        exp = datetime.strptime(u[5], "%Y-%m-%d")
-        now = datetime.now()
-
-        if now > exp:
-            remove_user(uid)
+        if datetime.now() > datetime.strptime(u[5], "%Y-%m-%d"):
+            remove_user(u[0])
 
 
 # ================= APP =================
@@ -273,7 +287,15 @@ app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
 app.add_handler(CallbackQueryHandler(my, pattern="mysub"))
 
+app.add_handler(CallbackQueryHandler(total_users, pattern="total_users"))
+app.add_handler(CallbackQueryHandler(revenue, pattern="revenue"))
+app.add_handler(CallbackQueryHandler(daily, pattern="daily"))
+app.add_handler(CallbackQueryHandler(edit_plan, pattern="edit_plan"))
+app.add_handler(CallbackQueryHandler(delete_plan, pattern="delete_plan"))
+app.add_handler(CallbackQueryHandler(add_plan, pattern="add_plan"))
+
 app.add_handler(MessageHandler(filters.PHOTO, photo))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
 app.job_queue.run_repeating(expiry, interval=3600)
 
