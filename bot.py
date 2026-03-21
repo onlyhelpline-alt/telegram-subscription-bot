@@ -11,7 +11,7 @@ init_db()
 # ================= START =================
 async def start(update: Update, context):
     kb = [
-        [InlineKeyboardButton("💎 Subscription Plans", callback_data="plans")],
+        [InlineKeyboardButton("💎 Trader VIP Group", callback_data="plans")],
         [InlineKeyboardButton("📊 My Subscription", callback_data="mysub")],
         [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]
     ]
@@ -49,8 +49,8 @@ async def plan_detail(update, context):
 
     kb = [
         [InlineKeyboardButton("💰 Payment Info", callback_data="payinfo")],
-        [InlineKeyboardButton("🎬 Demo", url=demo)],
-        [InlineKeyboardButton("📞 Contact", url=f"https://t.me/{ADMIN_USERNAME}")]
+        [InlineKeyboardButton("🎬 Check Demo", url=demo)],
+        [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]
     ]
 
     await q.message.reply_text(
@@ -76,8 +76,8 @@ async def payinfo(update, context):
     )
 
     kb = [
-        [InlineKeyboardButton("📸 Send Screenshot", callback_data="send_ss")],
-        [InlineKeyboardButton("🆔 Send ID", callback_data="send_id")]
+        [InlineKeyboardButton("📸 Send Payment Screenshot", callback_data="send_ss")],
+        [InlineKeyboardButton("🆔 Send Your Details", callback_data="send_id")]
     ]
 
     await q.message.reply_text("Choose Option", reply_markup=InlineKeyboardMarkup(kb))
@@ -99,7 +99,7 @@ async def send_id(update, context):
         f"{user.id} | {name} | ₹{price}"
     )
 
-    await q.message.reply_text("✅ Sent to admin")
+    await q.message.reply_text("✅ Your Details Sent to admin")
 
 
 # ================= SCREENSHOT =================
@@ -107,7 +107,7 @@ async def send_ss(update, context):
     q = update.callback_query
     await q.answer()
     context.user_data["awaiting_ss"] = True
-    await q.message.reply_text("📸 Send screenshot")
+    await q.message.reply_text("📸 Send Payment screenshot")
 
 
 async def photo(update, context):
@@ -132,7 +132,7 @@ async def photo(update, context):
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    await update.message.reply_text("✅ Sent to admin")
+    await update.message.reply_text("✅ Your Screenshot Received Please wait for admin Approval ✅")
 
 
 # ================= APPROVE =================
@@ -151,7 +151,7 @@ async def approve(update, context):
         return
 
     name, price, validity, _, channel = plan[1], plan[2], plan[3], plan[4], plan[5]
-    await context.bot.send_message(chat_id=channel, text="TEST MESSAGE")
+    
     now = datetime.now()
     exp = now + timedelta(days=validity)
 
