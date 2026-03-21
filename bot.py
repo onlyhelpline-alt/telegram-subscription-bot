@@ -169,10 +169,19 @@ async def approve(update: Update, context):
     now = datetime.now()
     exp = now + timedelta(days=validity)
 
-    add_user(uid, "", name, price, now.strftime("%Y-%m-%d"), exp.strftime("%Y-%m-%d"))
+    user = await context.bot.get_chat(uid)
+
+    add_user(
+        uid,
+        user.username or "NoUsername",
+        name,
+        price,
+        now.strftime("%Y-%m-%d"),
+        exp.strftime("%Y-%m-%d")
+    )
 
     link = await context.bot.create_chat_invite_link(
-        chat_id=-1001234567890,  # अपना channel डाल
+        chat_id=VIP_CHANNEL_ID,
         member_limit=1
     )
 
@@ -207,6 +216,37 @@ async def reject(update: Update, context):
     await q.edit_message_reply_markup(None)
 
 
+# ================= MY SUB =================
+async def my(update: Update, context):
+    q = update.callback_query
+    await q.answer()
+
+    for u in get_users():
+        if u[0] == q.from_user.id:
+            await q.message.reply_text(f"""
+📦 Plan: {u[2]}
+💰 Price: ₹{u[3]}
+📅 Join: {u[4]}
+⏳ Expiry: {u[5]}
+""")
+            return
+
+    await q.message.reply_text("❌ No active subscription")
+
+
+# ================= ADMIN =================
+async def admin(update: Update, context):
+    if update.message.from_user.id != ADMIN_ID:
+        return
+
+    await update.message.reply_text("""
+⚙️ ADMIN PANEL
+
+Use:
+/approve user_id plan_key
+""")
+
+
 # ================= EXPIRY =================
 async def expiry(context):
     for u in get_users():
@@ -222,6 +262,8 @@ async def expiry(context):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("admin", admin))
+
 app.add_handler(CallbackQueryHandler(plans, pattern="plans"))
 app.add_handler(CallbackQueryHandler(plan_detail, pattern="plan_"))
 app.add_handler(CallbackQueryHandler(payinfo, pattern="payinfo"))
@@ -229,6 +271,7 @@ app.add_handler(CallbackQueryHandler(send_id, pattern="send_id"))
 app.add_handler(CallbackQueryHandler(send_ss, pattern="send_ss"))
 app.add_handler(CallbackQueryHandler(approve, pattern="approve_"))
 app.add_handler(CallbackQueryHandler(reject, pattern="reject_"))
+app.add_handler(CallbackQueryHandler(my, pattern="mysub"))
 
 app.add_handler(MessageHandler(filters.PHOTO, photo))
 
