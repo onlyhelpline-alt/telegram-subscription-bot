@@ -28,7 +28,7 @@ async def plans(update, context):
         key, name, price, *_ = p
         kb.append([InlineKeyboardButton(f"{name} ₹{price}", callback_data=f"plan_{key}")])
 
-    await q.message.reply_text("💎 Choose Plan", reply_markup=InlineKeyboardMarkup(kb))
+    await q.message.reply_text("💎 Choose Your Mentor", reply_markup=InlineKeyboardMarkup(kb))
 
 
 # ================= PLAN DETAIL =================
