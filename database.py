@@ -14,6 +14,7 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
+    # old table (keep for backward safety)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY,
@@ -36,12 +37,72 @@ def init_db():
     )
     """)
 
+    # new subscriptions table for multiple plan purchase + history
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS subscriptions (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT,
+        username TEXT,
+        plan_key TEXT,
+        plan TEXT,
+        price INT,
+        purchase_date TEXT,
+        expiry_date TEXT,
+        channel_id BIGINT,
+        status TEXT DEFAULT 'active',
+        notified_24h BOOLEAN DEFAULT FALSE,
+        renew_reminders_sent INT DEFAULT 0,
+        last_renew_reminder_date TEXT
+    )
+    """)
+
+    conn.commit()
+
+    # old users table se one-time migration
+    cur.execute("SELECT user_id, username, plan, price, join_date, expiry FROM users")
+    old_rows = cur.fetchall()
+
+    for row in old_rows:
+        user_id, username, plan_name, price, join_date, expiry = row
+
+        cur.execute("""
+        SELECT id FROM subscriptions
+        WHERE user_id=%s AND plan=%s AND purchase_date=%s AND expiry_date=%s
+        """, (user_id, plan_name, join_date, expiry))
+        exists = cur.fetchone()
+
+        if exists:
+            continue
+
+        cur.execute("""
+        SELECT plan_key, channel_id FROM plans WHERE name=%s LIMIT 1
+        """, (plan_name,))
+        plan_row = cur.fetchone()
+
+        plan_key = plan_row[0] if plan_row else None
+        channel_id = plan_row[1] if plan_row else None
+
+        cur.execute("""
+        INSERT INTO subscriptions
+        (user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'active')
+        """, (
+            user_id,
+            username,
+            plan_key,
+            plan_name,
+            price,
+            join_date,
+            expiry,
+            channel_id
+        ))
+
     conn.commit()
     cur.close()
     conn.close()
 
 
-# ================= USERS =================
+# ================= LEGACY USERS =================
 def add_user(uid, username, plan, price, join, exp):
     conn = get_conn()
     cur = conn.cursor()
@@ -63,10 +124,16 @@ def add_user(uid, username, plan, price, join, exp):
 
 
 def get_users():
+    # active subscriptions in old tuple format for compatibility
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM users")
+    cur.execute("""
+    SELECT user_id, username, plan, price, purchase_date, expiry_date
+    FROM subscriptions
+    WHERE status='active'
+    ORDER BY purchase_date DESC, id DESC
+    """)
     data = cur.fetchall()
 
     cur.close()
@@ -79,38 +146,38 @@ def remove_user(uid):
     cur = conn.cursor()
 
     cur.execute("DELETE FROM users WHERE user_id=%s", (uid,))
+    cur.execute("UPDATE subscriptions SET status='expired' WHERE user_id=%s AND status='active'", (uid,))
 
     conn.commit()
     cur.close()
     conn.close()
 
 
-# ================= PLANS =================
-def add_plan_db(key, name, price, days, demo, channel):
+# ================= NEW SUBSCRIPTIONS =================
+def add_subscription(uid, username, plan_key, plan, price, purchase_date, expiry_date, channel_id):
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT INTO plans (plan_key, name, price, validity, demo_link, channel_id)
-    VALUES (%s,%s,%s,%s,%s,%s)
-    ON CONFLICT (plan_key) DO UPDATE SET
-        name = EXCLUDED.name,
-        price = EXCLUDED.price,
-        validity = EXCLUDED.validity,
-        demo_link = EXCLUDED.demo_link,
-        channel_id = EXCLUDED.channel_id
-    """, (key, name, price, days, demo, channel))
+    INSERT INTO subscriptions
+    (user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status, notified_24h, renew_reminders_sent, last_renew_reminder_date)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'active',FALSE,0,NULL)
+    """, (uid, username, plan_key, plan, price, purchase_date, expiry_date, channel_id))
 
     conn.commit()
     cur.close()
     conn.close()
 
 
-def get_plans():
+def get_all_subscriptions():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM plans")
+    cur.execute("""
+    SELECT id, user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status, notified_24h, renew_reminders_sent, last_renew_reminder_date
+    FROM subscriptions
+    ORDER BY id DESC
+    """)
     data = cur.fetchall()
 
     cur.close()
@@ -118,37 +185,26 @@ def get_plans():
     return data
 
 
-def get_plan(key):
+def get_user_active_subscriptions(uid):
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("SELECT * FROM plans WHERE plan_key=%s", (key,))
-    data = cur.fetchone()
+    cur.execute("""
+    SELECT id, user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status
+    FROM subscriptions
+    WHERE user_id=%s AND status='active'
+    ORDER BY id DESC
+    """, (uid,))
+    data = cur.fetchall()
 
     cur.close()
     conn.close()
     return data
 
 
-def update_plan(key, price, days):
+def get_total_revenue():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-    UPDATE plans SET price=%s, validity=%s WHERE plan_key=%s
-    """, (price, days, key))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-def delete_plan_db(key):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("DELETE FROM plans WHERE plan_key=%s", (key,))
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    cur.execute("SELECT COALESCE(SUM(price), 0) FROM subscriptions")
+    total = cur.fetchone()[0]
