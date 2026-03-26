@@ -8,6 +8,59 @@ from database import *
 init_db()
 
 
+# ================= HELPERS =================
+def format_username(username):
+    if username and username != "NoUser":
+        return f"@{username}"
+    return "No Username"
+
+
+def renew_keyboard(plan_key):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Renew Now", callback_data=f"plan_{plan_key}")],
+        [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]
+    ])
+
+
+async def reply_long(message, text):
+    for i in range(0, len(text), 4000):
+        await message.reply_text(text[i:i + 4000])
+
+
+def admin_detail_text(user_id, username, plan_name, price, purchase_date=None, expiry_date=None, title="📩 USER DETAILS"):
+    text = (
+        f"{title}\n\n"
+        f"🆔 User ID: {user_id}\n"
+        f"👤 Username: {format_username(username)}\n"
+        f"📦 Plan: {plan_name}\n"
+        f"💰 Price: ₹{price}\n"
+    )
+
+    if purchase_date:
+        text += f"🗓 Purchase Date: {purchase_date}\n"
+    if expiry_date:
+        text += f"⌛ Expiry Date: {expiry_date}\n"
+
+    return text
+
+
+async def remove_from_chat(bot, chat_id, user_id):
+    try:
+        await bot.ban_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            until_date=datetime.now() + timedelta(seconds=35)
+        )
+        await bot.unban_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            only_if_banned=True
+        )
+        return True, "Removed Successfully"
+    except Exception as e:
+        return False, str(e)
+
+
 # ================= START =================
 async def start(update: Update, context):
     kb = [
@@ -15,7 +68,10 @@ async def start(update: Update, context):
         [InlineKeyboardButton("📊 My Subscription", callback_data="mysub")],
         [InlineKeyboardButton("📞 Contact Admin", url=f"https://t.me/{ADMIN_USERNAME}")]
     ]
-    await update.message.reply_text("🔥 Welcome to VIP Subscription Bot", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "🔥 Welcome to VIP Subscription Bot",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
 # ================= PLANS =================
@@ -28,7 +84,10 @@ async def plans(update, context):
         key, name, price, *_ = p
         kb.append([InlineKeyboardButton(f"{name} ₹{price}", callback_data=f"plan_{key}")])
 
-    await q.message.reply_text("💎 Choose Your Mentor", reply_markup=InlineKeyboardMarkup(kb))
+    await q.message.reply_text(
+        "💎 Choose Your Mentor",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
 # ================= PLAN DETAIL =================
@@ -44,7 +103,6 @@ async def plan_detail(update, context):
         return
 
     name, price, validity, demo = plan[1], plan[2], plan[3], plan[4]
-
     context.user_data["plan"] = key
 
     kb = [
@@ -64,8 +122,15 @@ async def payinfo(update, context):
     q = update.callback_query
     await q.answer()
 
-    key = context.user_data["plan"]
+    key = context.user_data.get("plan")
+    if not key:
+        await q.message.reply_text("❌ Please select a plan first.")
+        return
+
     plan = get_plan(key)
+    if not plan:
+        await q.message.reply_text("❌ Plan not found")
+        return
 
     name, price = plan[1], plan[2]
 
@@ -80,7 +145,10 @@ async def payinfo(update, context):
         [InlineKeyboardButton("🆔 Send Your Details", callback_data="send_id")]
     ]
 
-    await q.message.reply_text("Choose Option", reply_markup=InlineKeyboardMarkup(kb))
+    await q.message.reply_text(
+        "Choose Option",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
 # ================= SEND ID =================
@@ -89,14 +157,27 @@ async def send_id(update, context):
     await q.answer()
 
     user = q.from_user
-    key = context.user_data["plan"]
+    key = context.user_data.get("plan")
+    if not key:
+        await q.message.reply_text("❌ Please select a plan first.")
+        return
+
     plan = get_plan(key)
+    if not plan:
+        await q.message.reply_text("❌ Plan not found")
+        return
 
     name, price = plan[1], plan[2]
 
     await context.bot.send_message(
         ADMIN_ID,
-        f"{user.id} | {name} | ₹{price}"
+        admin_detail_text(
+            user_id=user.id,
+            username=user.username,
+            plan_name=name,
+            price=price,
+            title="📩 USER SENT DETAILS"
+        )
     )
 
     await q.message.reply_text("✅ Your Details Sent to admin")
@@ -106,6 +187,12 @@ async def send_id(update, context):
 async def send_ss(update, context):
     q = update.callback_query
     await q.answer()
+
+    key = context.user_data.get("plan")
+    if not key:
+        await q.message.reply_text("❌ Please select a plan first.")
+        return
+
     context.user_data["awaiting_ss"] = True
     await q.message.reply_text("📸 Send Payment screenshot")
 
@@ -115,8 +202,17 @@ async def photo(update, context):
         return
 
     user = update.message.from_user
-    key = context.user_data["plan"]
+    key = context.user_data.get("plan")
+    if not key:
+        context.user_data["awaiting_ss"] = False
+        await update.message.reply_text("❌ Plan data missing. Please select the plan again.")
+        return
+
     plan = get_plan(key)
+    if not plan:
+        context.user_data["awaiting_ss"] = False
+        await update.message.reply_text("❌ Plan not found.")
+        return
 
     name, price = plan[1], plan[2]
 
@@ -128,10 +224,17 @@ async def photo(update, context):
     await context.bot.send_photo(
         ADMIN_ID,
         update.message.photo[-1].file_id,
-        caption=f"{user.id} | {name} | ₹{price}",
+        caption=admin_detail_text(
+            user_id=user.id,
+            username=user.username,
+            plan_name=name,
+            price=price,
+            title="📸 PAYMENT SCREENSHOT"
+        ),
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
+    context.user_data["awaiting_ss"] = False
     await update.message.reply_text("✅ Your Screenshot Received Please wait for admin Approval ✅")
 
 
@@ -145,25 +248,40 @@ async def approve(update, context):
     uid = int(uid)
 
     plan = get_plan(key)
-
     if not plan:
         await q.message.reply_text("❌ Plan not found (Approve)")
         return
 
     name, price, validity, _, channel = plan[1], plan[2], plan[3], plan[4], plan[5]
-    
+
     now = datetime.now()
     exp = now + timedelta(days=validity)
 
     user = await context.bot.get_chat(uid)
+    username = user.username or "NoUser"
+    purchase_date = now.strftime("%Y-%m-%d")
+    expiry_date = exp.strftime("%Y-%m-%d")
 
+    # Legacy save for compatibility
     add_user(
         uid,
-        user.username or "NoUser",
+        username,
         name,
         price,
-        now.strftime("%Y-%m-%d"),
-        exp.strftime("%Y-%m-%d")
+        purchase_date,
+        expiry_date
+    )
+
+    # New multiple purchase history save
+    add_subscription(
+        uid,
+        username,
+        key,
+        name,
+        price,
+        purchase_date,
+        expiry_date,
+        channel
     )
 
     link = await context.bot.create_chat_invite_link(
@@ -173,7 +291,26 @@ async def approve(update, context):
 
     await context.bot.send_message(
         uid,
-        f"🎉 Approved!\n\n📦 {name}\n⏳ {validity} Days\n\n🔗 {link.invite_link}"
+        f"🎉 Approved!\n\n"
+        f"📦 Plan: {name}\n"
+        f"💰 Price: ₹{price}\n"
+        f"🗓 Purchase Date: {purchase_date}\n"
+        f"⌛ Expiry Date: {expiry_date}\n"
+        f"⏳ Validity: {validity} Days\n\n"
+        f"🔗 Join Link:\n{link.invite_link}"
+    )
+
+    await context.bot.send_message(
+        ADMIN_ID,
+        admin_detail_text(
+            user_id=uid,
+            username=username,
+            plan_name=name,
+            price=price,
+            purchase_date=purchase_date,
+            expiry_date=expiry_date,
+            title="✅ PAYMENT APPROVED"
+        )
     )
 
     await q.edit_message_reply_markup(None)
@@ -195,12 +332,25 @@ async def my(update, context):
     q = update.callback_query
     await q.answer()
 
-    for u in get_users():
-        if u[0] == q.from_user.id:
-            await q.message.reply_text(f"{u[2]} | Exp: {u[5]}")
-            return
+    subs = get_user_active_subscriptions(q.from_user.id)
 
-    await q.message.reply_text("No subscription")
+    if not subs:
+        await q.message.reply_text("No subscription")
+        return
+
+    text = "📊 Your Active Subscriptions\n\n"
+
+    for s in subs:
+        # s = id, user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status
+        text += (
+            f"📦 Plan: {s[4]}\n"
+            f"💰 Price: ₹{s[5]}\n"
+            f"🗓 Purchase Date: {s[6]}\n"
+            f"⌛ Expiry Date: {s[7]}\n"
+            f"📌 Status: {s[9]}\n\n"
+        )
+
+    await reply_long(q.message, text)
 
 
 # ================= ADMIN PANEL =================
@@ -218,7 +368,10 @@ async def admin(update, context):
         [InlineKeyboardButton("➕ Add Plan", callback_data="add_plan")]
     ]
 
-    await update.message.reply_text("⚙️ ADMIN PANEL", reply_markup=InlineKeyboardMarkup(kb))
+    await update.message.reply_text(
+        "⚙️ ADMIN PANEL",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 
 # ================= ADMIN FEATURES =================
@@ -236,13 +389,40 @@ async def course_list(update, context):
 async def total_users(update, context):
     q = update.callback_query
     await q.answer()
-    await q.message.reply_text(f"Users: {len(get_users())}")
+
+    all_subs = get_all_subscriptions()
+    unique_users = get_unique_active_users_count()
+    active_subs = [s for s in all_subs if s[9] == "active"]
+
+    if not all_subs:
+        await q.message.reply_text(
+            "👥 Total Active Users: 0\n📦 Total Active Plans: 0\n\nNo customer found."
+        )
+        return
+
+    text = (
+        f"👥 Total Active Users: {unique_users}\n"
+        f"📦 Total Active Plans: {len(active_subs)}\n"
+        f"🧾 Total Purchase Records: {len(all_subs)}\n\n"
+        f"ID | Username | Course | Price | Purchase | Expiry | Status\n"
+        f"{'-' * 95}\n"
+    )
+
+    for s in all_subs:
+        line = (
+            f"{s[1]} | {format_username(s[2])} | {s[4]} | ₹{s[5]} | "
+            f"{s[6]} | {s[7]} | {s[9]}\n"
+        )
+        text += line
+
+    await reply_long(q.message, text)
 
 
 async def revenue(update, context):
     q = update.callback_query
     await q.answer()
-    total = sum([u[3] for u in get_users()])
+
+    total = get_total_revenue()
     await q.message.reply_text(f"Total ₹{total}")
 
 
@@ -251,7 +431,7 @@ async def daily(update, context):
     await q.answer()
 
     today = datetime.now().strftime("%Y-%m-%d")
-    total = sum([u[3] for u in get_users() if u[4] == today])
+    total = get_daily_revenue(today)
 
     await q.message.reply_text(f"Today ₹{total}")
 
@@ -279,48 +459,156 @@ async def delete_plan(update, context):
 
 
 async def handle_text(update, context):
-    txt = update.message.text
+    txt = update.message.text.strip()
 
-    if context.user_data.get("add"):
-        key, name, price, days, demo, channel = txt.split(",")
+    try:
+        if context.user_data.get("add"):
+            key, name, price, days, demo, channel = [x.strip() for x in txt.split(",", 5)]
 
-        add_plan_db(key, name, int(price), int(days), demo, int(channel))
+            add_plan_db(key, name, int(price), int(days), demo, int(channel))
 
-        await update.message.reply_text("✅ Added")
-        context.user_data.clear()
+            await update.message.reply_text("✅ Added")
+            context.user_data.clear()
 
-    elif context.user_data.get("edit"):
-        key, price, days = txt.split(",")
+        elif context.user_data.get("edit"):
+            key, price, days = [x.strip() for x in txt.split(",", 2)]
 
-        plan = get_plan(key)
-        if plan:
-            add_plan_db(
-                key,
-                plan[1],
-                int(price),
-                int(days),
-                plan[4],
-                plan[5]
-            )
+            plan = get_plan(key)
+            if plan:
+                add_plan_db(
+                    key,
+                    plan[1],
+                    int(price),
+                    int(days),
+                    plan[4],
+                    plan[5]
+                )
+                await update.message.reply_text("✏️ Updated")
+            else:
+                await update.message.reply_text("❌ Plan not found")
 
-        await update.message.reply_text("✏️ Updated")
-        context.user_data.clear()
+            context.user_data.clear()
 
-    elif context.user_data.get("delete"):
-        delete_plan_db(txt.strip())
+        elif context.user_data.get("delete"):
+            delete_plan_db(txt.strip())
 
-        await update.message.reply_text("❌ Deleted")
+            await update.message.reply_text("❌ Deleted")
+            context.user_data.clear()
+
+    except Exception:
+        await update.message.reply_text("❌ Wrong format. Please send correct data only.")
         context.user_data.clear()
 
 
 # ================= EXPIRY =================
 async def expiry(context):
-    for u in get_users():
-        uid = u[0]
-        exp = datetime.strptime(u[5], "%Y-%m-%d")
+    now = datetime.now()
+    today = now.date()
+    today_str = today.strftime("%Y-%m-%d")
 
-        if datetime.now() > exp:
-            remove_user(uid)
+    all_subs = get_all_subscriptions()
+
+    for s in all_subs:
+        # s = id, user_id, username, plan_key, plan, price, purchase_date, expiry_date, channel_id, status, notified_24h, renew_reminders_sent, last_renew_reminder_date
+        sub_id = s[0]
+        uid = s[1]
+        username = s[2]
+        plan_key = s[3]
+        plan_name = s[4]
+        price = s[5]
+        purchase_date = s[6]
+        expiry_date = s[7]
+        channel_id = s[8]
+        status = s[9]
+        notified_24h = s[10]
+        renew_reminders_sent = s[11]
+        last_renew_reminder_date = s[12]
+
+        exp_date = datetime.strptime(expiry_date, "%Y-%m-%d").date()
+
+        # 24h before expiry notification
+        if status == "active" and not notified_24h and today == (exp_date - timedelta(days=1)):
+            user_msg = (
+                f"⚠️ Your subscription is expiring in 24 hours.\n\n"
+                f"📦 Plan: {plan_name}\n"
+                f"💰 Price: ₹{price}\n"
+                f"🗓 Purchase Date: {purchase_date}\n"
+                f"⌛ Expiry Date: {expiry_date}\n\n"
+                f"Renew on time to avoid removal."
+            )
+
+            await context.bot.send_message(
+                uid,
+                user_msg,
+                reply_markup=renew_keyboard(plan_key)
+            )
+
+            await context.bot.send_message(
+                ADMIN_ID,
+                admin_detail_text(
+                    user_id=uid,
+                    username=username,
+                    plan_name=plan_name,
+                    price=price,
+                    purchase_date=purchase_date,
+                    expiry_date=expiry_date,
+                    title="⏰ 24 HOURS LEFT"
+                )
+            )
+
+            mark_24h_notified(sub_id)
+
+        # expire and remove after expiry
+        if status == "active" and today > exp_date:
+            removed_ok = False
+            removed_msg = "Channel ID Missing"
+
+            if channel_id:
+                removed_ok, removed_msg = await remove_from_chat(context.bot, channel_id, uid)
+
+            mark_subscription_expired(sub_id)
+
+            await context.bot.send_message(
+                uid,
+                f"❌ Your subscription has expired.\n\n"
+                f"📦 Plan: {plan_name}\n"
+                f"💰 Price: ₹{price}\n"
+                f"🗓 Purchase Date: {purchase_date}\n"
+                f"⌛ Expiry Date: {expiry_date}\n\n"
+                f"You have been removed from the group/channel.\n"
+                f"Tap below to renew now.",
+                reply_markup=renew_keyboard(plan_key)
+            )
+
+            await context.bot.send_message(
+                ADMIN_ID,
+                admin_detail_text(
+                    user_id=uid,
+                    username=username,
+                    plan_name=plan_name,
+                    price=price,
+                    purchase_date=purchase_date,
+                    expiry_date=expiry_date,
+                    title="🚫 SUBSCRIPTION EXPIRED & REMOVED"
+                ) + f"\n📤 Remove Status: {'Success' if removed_ok else 'Failed'}\n📝 Note: {removed_msg}"
+            )
+
+        # renewal reminders for 3 days at 8 PM
+        if status == "expired" and now.hour == 20:
+            days_after_expiry = (today - exp_date).days
+
+            if 0 <= days_after_expiry <= 2 and renew_reminders_sent < 3 and last_renew_reminder_date != today_str:
+                await context.bot.send_message(
+                    uid,
+                    f"🔔 Renewal Reminder\n\n"
+                    f"📦 Plan: {plan_name}\n"
+                    f"⌛ Expired On: {expiry_date}\n"
+                    f"💰 Price: ₹{price}\n\n"
+                    f"Renew now to get access again.",
+                    reply_markup=renew_keyboard(plan_key)
+                )
+
+                mark_renew_reminder_sent(sub_id, today_str)
 
 
 # ================= APP =================
@@ -349,6 +637,6 @@ app.add_handler(CallbackQueryHandler(add_plan, pattern="add_plan"))
 app.add_handler(MessageHandler(filters.PHOTO, photo))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-app.job_queue.run_repeating(expiry, interval=3600)
+app.job_queue.run_repeating(expiry, interval=3600, first=10)
 
 app.run_polling()
