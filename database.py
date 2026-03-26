@@ -14,7 +14,6 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
-    # old table (keep for backward safety)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         user_id BIGINT PRIMARY KEY,
@@ -37,7 +36,6 @@ def init_db():
     )
     """)
 
-    # new subscriptions table for multiple plan purchase + history
     cur.execute("""
     CREATE TABLE IF NOT EXISTS subscriptions (
         id SERIAL PRIMARY KEY,
@@ -58,7 +56,7 @@ def init_db():
 
     conn.commit()
 
-    # old users table se one-time migration
+    # old users -> subscriptions migration
     cur.execute("SELECT user_id, username, plan, price, join_date, expiry FROM users")
     old_rows = cur.fetchall()
 
@@ -74,9 +72,7 @@ def init_db():
         if exists:
             continue
 
-        cur.execute("""
-        SELECT plan_key, channel_id FROM plans WHERE name=%s LIMIT 1
-        """, (plan_name,))
+        cur.execute("SELECT plan_key, channel_id FROM plans WHERE name=%s LIMIT 1", (plan_name,))
         plan_row = cur.fetchone()
 
         plan_key = plan_row[0] if plan_row else None
@@ -124,7 +120,6 @@ def add_user(uid, username, plan, price, join, exp):
 
 
 def get_users():
-    # active subscriptions in old tuple format for compatibility
     conn = get_conn()
     cur = conn.cursor()
 
@@ -132,7 +127,7 @@ def get_users():
     SELECT user_id, username, plan, price, purchase_date, expiry_date
     FROM subscriptions
     WHERE status='active'
-    ORDER BY purchase_date DESC, id DESC
+    ORDER BY id DESC
     """)
     data = cur.fetchall()
 
@@ -153,7 +148,78 @@ def remove_user(uid):
     conn.close()
 
 
-# ================= NEW SUBSCRIPTIONS =================
+# ================= PLANS =================
+def add_plan_db(key, name, price, days, demo, channel):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    INSERT INTO plans (plan_key, name, price, validity, demo_link, channel_id)
+    VALUES (%s,%s,%s,%s,%s,%s)
+    ON CONFLICT (plan_key) DO UPDATE SET
+        name = EXCLUDED.name,
+        price = EXCLUDED.price,
+        validity = EXCLUDED.validity,
+        demo_link = EXCLUDED.demo_link,
+        channel_id = EXCLUDED.channel_id
+    """, (key, name, price, days, demo, channel))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def get_plans():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM plans ORDER BY name ASC")
+    data = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return data
+
+
+def get_plan(key):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM plans WHERE plan_key=%s", (key,))
+    data = cur.fetchone()
+
+    cur.close()
+    conn.close()
+    return data
+
+
+def update_plan(key, price, days):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    UPDATE plans
+    SET price=%s, validity=%s
+    WHERE plan_key=%s
+    """, (price, days, key))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def delete_plan_db(key):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM plans WHERE plan_key=%s", (key,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+# ================= SUBSCRIPTIONS =================
 def add_subscription(uid, username, plan_key, plan, price, purchase_date, expiry_date, channel_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -208,3 +274,85 @@ def get_total_revenue():
 
     cur.execute("SELECT COALESCE(SUM(price), 0) FROM subscriptions")
     total = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+    return total
+
+
+def get_daily_revenue(date_str):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT COALESCE(SUM(price), 0)
+    FROM subscriptions
+    WHERE purchase_date=%s
+    """, (date_str,))
+    total = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+    return total
+
+
+def get_unique_active_users_count():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT COALESCE(COUNT(DISTINCT user_id), 0)
+    FROM subscriptions
+    WHERE status='active'
+    """)
+    count = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+    return count
+
+
+def mark_24h_notified(sub_id):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    UPDATE subscriptions
+    SET notified_24h=TRUE
+    WHERE id=%s
+    """, (sub_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def mark_subscription_expired(sub_id):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    UPDATE subscriptions
+    SET status='expired'
+    WHERE id=%s
+    """, (sub_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def mark_renew_reminder_sent(sub_id, today_str):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    UPDATE subscriptions
+    SET renew_reminders_sent = renew_reminders_sent + 1,
+        last_renew_reminder_date = %s
+    WHERE id=%s
+    """, (today_str, sub_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
